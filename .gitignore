@@ -1,0 +1,31 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+
+# Python
+__pycache__/
+*.py[codz]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Build output
+dist/
+build/
+*.egg-info/
+
+# Tests / linters
+.pytest_cache/
+.coverage*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Reference documention
+.ref/

@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "io_scene_biocv"
+maintainer = "Kapdap <kapdap@proton.me>"
+name = "Resident Evil: Code: Veronica Room Importer"
+tagline = "Import Resident Evil: Code: Veronica room data files (.rdx/.rdt)"
+type = "add-on"
+version = "0.1.0"
+
+website = "https://github.com/kapdap/re-cvx-blender"
+
+tags = ["Import-Export"]
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:MIT",
+]
+
+[permissions]
+files = "Import RDX room files from disk"

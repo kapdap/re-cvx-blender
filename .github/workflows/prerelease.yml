@@ -1,0 +1,53 @@
+name: Build pre-release
+
+on:
+  push:
+    tags:
+      - alpha
+      - beta
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+
+    env:
+      Release_Name: "BioCV Scene Importer"
+      Release_Body: "BioCV Scene Importer"
+      Addon_Name: io_scene_biocv
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get build tag
+        id: info
+        run: |
+          stamp=$(date +%Y%m%d%H%M%S)
+          short=$(git rev-parse --short $GITHUB_REF_NAME)
+          prefix="$GITHUB_REF_NAME+$stamp"
+          echo "tag=$prefix.$short" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+
+      - name: Build Blender addon
+        id: build
+        run: python build.py -a ${{ env.Addon_Name }} -t ${{ steps.info.outputs.tag }} -g
+
+      - name: Upload zip to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: ${{ steps.build.outputs.asset_path }}
+          asset_name: ${{ steps.build.outputs.asset_file }}
+          release_name: ${{ env.Release_Name }} (v${{ steps.build.outputs.release }})
+          body: ${{ env.Release_Body }} v${{ steps.build.outputs.release }}
+          tag: v${{ steps.build.outputs.release }}
+          overwrite: true
