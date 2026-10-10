@@ -36,7 +36,7 @@ jobs:
         with:
           file: ${{ steps.build.outputs.asset_path }}
           asset_name: ${{ steps.build.outputs.asset_file }}
-          release_name: ${{ env.Release_Name }} (v${{ steps.build.outputs.release }})
+          release_name: v${{ steps.build.outputs.release }}
           body: ${{ env.Release_Body }} v${{ steps.build.outputs.release }}
           tag: v${{ steps.build.outputs.release }}
           overwrite: true
