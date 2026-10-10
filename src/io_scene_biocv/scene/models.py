@@ -23,7 +23,7 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
         is_room = kind == "room"
         for bi, (bo, bs) in enumerate(table.blobs):
             try:
-                mlb_data = mlb.read_mlb(rdx.data, bo, bs)
+                mlb_data = mlb.read_mlb(rdx.data, bo, bs, rdx.endian)
             except nj.NjError as exc:
                 print("RDX: MLB decode failed @%#x: %s" % (bo, exc))
                 continue

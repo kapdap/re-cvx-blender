@@ -43,7 +43,7 @@ class Mlb:
             return -1
         return idx
 
-    def read(self, data, offset, size):
+    def read(self, data, offset, size, endian="<"):
         self.offset = offset
         self.size = size
         if size < 16 or offset + 16 > len(data):
@@ -51,8 +51,8 @@ class Mlb:
         self.magic = _ascii4(data, offset)
         self.status = data[offset + 3]
         self.is_chunk = bool(self.status & 0x80)
-        dtop_off, obj_num = struct.unpack_from("<2H", data, offset + 4)
-        tex_off, obj_off = struct.unpack_from("<2i", data, offset + 8)
+        dtop_off, obj_num = struct.unpack_from(endian + "2H", data, offset + 4)
+        tex_off, obj_off = struct.unpack_from(endian + "2i", data, offset + 8)
         dat_top = offset + dtop_off
         self.dat_top = dat_top
         self.obj_base = dat_top + obj_off if obj_off != -1 else 0
@@ -60,7 +60,7 @@ class Mlb:
         self.obj_num = obj_num
         self.tex_off = tex_off
         self.obj_off = obj_off
-        self.texlist.read(data, dat_top, tex_off)
+        self.texlist.read(data, dat_top, tex_off, endian)
         if not self.is_chunk:
             return self
         if obj_off == -1 or obj_num <= 0 or obj_num > 100000:
@@ -72,7 +72,7 @@ class Mlb:
                 self.notes.append("object array overrun at %d" % i)
                 break
             obj = NjObject()
-            mo = obj.read(data, oo, i)
+            mo = obj.read(data, oo, i, endian)
             model_offs.append(mo)
             self.objects.append(obj)
         uniq = {}
@@ -91,14 +91,14 @@ class Mlb:
         for idx in range(len(self.models)):
             mno = inv[idx]
             try:
-                self.models[idx] = read_model(data, dat_top, mno)
+                self.models[idx] = read_model(data, dat_top, mno, endian)
             except NjError as exc:
                 self.models[idx] = None
                 self.notes.append(f"model decode failed: {exc}")
         return self
 
 
-def iter_mlb_blobs(data, base, end):
+def iter_mlb_blobs(data, base, end, endian="<"):
     if base + 4 > end or base < 0 or end > len(data):
         return
     if end - base >= 3 and data[base : base + 3] == b"MDL":
@@ -106,7 +106,7 @@ def iter_mlb_blobs(data, base, end):
         return
     o = base
     while o + 4 <= end:
-        size = struct.unpack_from("<i", data, o)[0]
+        size = struct.unpack_from(endian + "i", data, o)[0]
         if size == -1:
             break
         if size == 0:
@@ -125,7 +125,7 @@ def iter_mlb_blobs(data, base, end):
         yield (o, end - o)
 
 
-def read_mlb(data, offset, size):
+def read_mlb(data, offset, size, endian="<"):
     mlb = Mlb()
-    mlb.read(data, offset, size)
+    mlb.read(data, offset, size, endian)
     return mlb

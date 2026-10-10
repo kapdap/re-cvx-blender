@@ -9,10 +9,10 @@ A Blender add-on that imports 3D scenes from **Resident Evil: Code: Veronica** r
 
 ## Features
 
-- Supports PlayStation 2 and Dreamcast files
 - Imports room geometry, models, textures and trigger zones
-- Maps TIM2 and PVR textures
-- Automatic PRS decompression
+- Maps TIM2, PVR and GVR textures
+- Automatic PRS detection and decompression
+- Supports PlayStation 2, Dreamcast and GameCube files
 
 ## Installation
 

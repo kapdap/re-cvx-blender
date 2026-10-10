@@ -2,10 +2,11 @@ import struct
 
 from . import mlb, prs, tex
 
-RDX_MAGIC_1 = 0x41200000
-RDX_MAGIC_2 = 0x40051EB8
-RDX_MAGIC_DEMO = 0x40028F5C
-RDX_MAGICS = (RDX_MAGIC_1, RDX_MAGIC_2, RDX_MAGIC_DEMO)
+RDX_MAGIC_0 = 0x40028F5C  # Demo
+RDX_MAGIC_1 = 0x40051EB8  # DC/PS2
+RDX_MAGIC_2 = 0x41200000  # DC/PS2
+RDX_MAGIC_3 = 0x41A00000  # GameCube
+RDX_MAGICS = (RDX_MAGIC_1, RDX_MAGIC_2, RDX_MAGIC_3, RDX_MAGIC_0)
 
 PRS_FLAG = 0xDF
 
@@ -26,6 +27,23 @@ def _ascii(data, offset, size):
         return ""
 
 
+def _detect_endian(data):
+    if len(data) < 4:
+        return None
+    le = struct.unpack_from("<I", data, 0)[0]
+    if le in RDX_MAGICS:
+        return "<"
+    be = struct.unpack_from(">I", data, 0)[0]
+    if be in RDX_MAGICS:
+        return ">"
+    return None
+
+
+def _s16(val):
+    val &= 0xFFFF
+    return val - 0x10000 if val >= 0x8000 else val
+
+
 class RdxHeader:
     def __init__(self):
         self.ver = 0.0
@@ -41,22 +59,22 @@ class RdxHeader:
         self.room_size = (0.0, 0.0, 0.0)
         self.grand = [0.0] * 32
 
-    def read(self, data):
+    def read(self, data, endian="<"):
         if len(data) < 0x260:
             raise ValueError("file too small for RDX header")
-        self.ver = struct.unpack_from("<f", data, 0)[0]
-        self.sections = list(struct.unpack_from("<8i", data, 0x10))
+        self.ver = struct.unpack_from(endian + "f", data, 0)[0]
+        self.sections = list(struct.unpack_from(endian + "8i", data, 0x10))
         self.author = _ascii(data, 0x60, 32)
-        tables_ptr = struct.unpack_from("<i", data, 0x10)[0]
+        tables_ptr = struct.unpack_from(endian + "i", data, 0x10)[0]
         if tables_ptr < 0 or tables_ptr + 64 > len(data):
             tables_ptr = 0x80
-        self.tables = list(struct.unpack_from("<16i", data, tables_ptr))
-        self.counts = list(struct.unpack_from("<16i", data, 0x100))
+        self.tables = list(struct.unpack_from(endian + "16i", data, tables_ptr))
+        self.counts = list(struct.unpack_from(endian + "16i", data, 0x100))
         self.flg, self.bak_col, self.fog_col, self.fog_nr, self.fog_fr = (
-            struct.unpack_from("<IIIff", data, 0x180)
+            struct.unpack_from(endian + "IIIff", data, 0x180)
         )
-        self.room_size = struct.unpack_from("<3f", data, 0x194)
-        self.grand = list(struct.unpack_from("<32f", data, 0x1A0))
+        self.room_size = struct.unpack_from(endian + "3f", data, 0x194)
+        self.grand = list(struct.unpack_from(endian + "32f", data, 0x1A0))
         return self
 
 
@@ -76,7 +94,7 @@ class EttyEntry:
         self.aspd = 0
         self.hide = (0, 0, 0, 0)
 
-    def read(self, data, offset):
+    def read(self, data, offset, endian="<"):
         (
             self.flg,
             self.id,
@@ -96,7 +114,7 @@ class EttyEntry:
             h1,
             h2,
             h3,
-        ) = struct.unpack_from("<IHHbBbbfffhhhh4b", data, offset)
+        ) = struct.unpack_from(endian + "IHHbBbbfffhhhh4b", data, offset)
         self.pos = (px, py, pz)
         self.ang = (ax, ay, az)
         self.hide = (h0, h1, h2, h3)
@@ -123,7 +141,7 @@ class EffectEntry:
         self.link = (0.0, 0.0, 0.0)
         self.param = 0
 
-    def read(self, data, offset):
+    def read(self, data, offset, endian="<"):
         (
             self.flg,
             self.id,
@@ -144,7 +162,7 @@ class EffectEntry:
             ly,
             lz,
             self.param,
-        ) = struct.unpack_from("<ihhi6f2h3i3fi", data, offset)
+        ) = struct.unpack_from(endian + "ihhi6f2h3i3fi", data, offset)
         self.ay_ax = ((self.ax & 0xFFFF) << 16) | (self.ay & 0xFFFF)
         self.flr_no = flr_mdlver & 0xFFFF
         if self.flr_no >= 0x8000:
@@ -169,7 +187,7 @@ class AtrEntry:
         self.size = (0.0, 0.0, 0.0)
         self.prm = (0, 0, 0, 0)
 
-    def read(self, data, offset):
+    def read(self, data, offset, endian="<"):
         (
             self.flg,
             self.type,
@@ -186,7 +204,7 @@ class AtrEntry:
             p1,
             p2,
             p3,
-        ) = struct.unpack_from("<BBBBIffffffBBBB", data, offset)
+        ) = struct.unpack_from(endian + "BBBBIffffffBBBB", data, offset)
         self.pos = (px, py, pz)
         self.size = (w, h, dd)
         self.prm = (p0, p1, p2, p3)
@@ -207,8 +225,8 @@ class PlayerEntry:
         self.pos = (0.0, 0.0, 0.0)
         self.ay = 0
 
-    def read(self, data, offset):
-        px, py, pz, self.ay = struct.unpack_from("<3fi", data, offset)
+    def read(self, data, offset, endian="<"):
+        px, py, pz, self.ay = struct.unpack_from(endian + "3fi", data, offset)
         self.pos = (px, py, pz)
         return self
 
@@ -238,8 +256,8 @@ class CameraBlock:
         self.fog_nr = 0.0
         self.fog_fr = 0.0
 
-    def read(self, data, offset):
-        vals = struct.unpack_from("<HBb12f5i4h4Bi16I8II2f", data, offset)
+    def read(self, data, offset, endian="<"):
+        vals = struct.unpack_from(endian + "HBb12f5i4h4Bi16I8II2f", data, offset)
         self.flg = vals[0]
         self.lgtclip = vals[1]
         self.spd = vals[2]
@@ -276,7 +294,7 @@ class CameraEntry:
         self.blend_range = (0.0, 0.0, 0.0)
         self.blocks = []
 
-    def read(self, data, offset):
+    def read(self, data, offset, endian="<"):
         (
             self.flg,
             self.type,
@@ -289,13 +307,13 @@ class CameraEntry:
             cw,
             ch,
             cd,
-        ) = struct.unpack_from("<BBbBi6f", data, offset)
+        ) = struct.unpack_from(endian + "BBbBi6f", data, offset)
         self.ref = (cx, cy, cz)
         self.blend_range = (cw, ch, cd)
         self.blocks = []
         for i in range(2):
             blk = CameraBlock()
-            blk.read(data, offset + 32 + i * SIZE_CAMERA_BLOCK)
+            blk.read(data, offset + 32 + i * SIZE_CAMERA_BLOCK, endian)
             self.blocks.append(blk)
         return self
 
@@ -319,13 +337,26 @@ class LightEntry:
         self.params = [0.0] * 49
         self.iparams = [0] * 49
 
-    def read(self, data, offset):
-        vals = struct.unpack_from("<hh6i49f", data, offset)
-        self.flg_lo = vals[0]
-        self.flg_hi = vals[1]
-        self.type, self.aspd, self.lkflg, self.lkno, self.lkono, self.lsrc = vals[2:8]
-        self.params = list(vals[8:57])
-        self.iparams = list(struct.unpack_from("<49i", data, offset + 28))
+    def read(self, data, offset, endian="<"):
+        if endian == ">":
+            flg_word = struct.unpack_from(">i", data, offset)[0]
+            self.flg_lo = _s16(flg_word & 0xFFFF)
+            self.flg_hi = _s16((flg_word >> 16) & 0xFFFF)
+            vals = struct.unpack_from(">6i49f", data, offset + 4)
+            self.type, self.aspd, self.lkflg, self.lkno, self.lkono, self.lsrc = vals[
+                0:6
+            ]
+            self.params = list(vals[6:55])
+            self.iparams = list(struct.unpack_from(">49i", data, offset + 28))
+        else:
+            vals = struct.unpack_from("<hh6i49f", data, offset)
+            self.flg_lo = vals[0]
+            self.flg_hi = vals[1]
+            self.type, self.aspd, self.lkflg, self.lkno, self.lkono, self.lsrc = vals[
+                2:8
+            ]
+            self.params = list(vals[8:57])
+            self.iparams = list(struct.unpack_from("<49i", data, offset + 28))
         return self
 
     @property
@@ -350,14 +381,18 @@ class TexBlock:
 
     @property
     def kind(self):
-        if self.code == 0x324D4954:
+        if self.code in (0x324D4954, 0x54494D32):
             return "TIM2"
-        if self.code in (0x00494C50,):
+        if self.code in (0x00494C50, 0x504C4900):
             return "PLI"
-        if self.code == 0x52565050 or self.code == 0x52565054:
+        if self.code in (0x52565050, 0x52565054):
             return "PVR"
         if self.code == 0x50565050:
             return "PVP"
+        if self.code in (0x54505652, 0x50505652):
+            return "GVR"
+        if self.code == 0x50505650:
+            return "GVP"
         if self.code == 0xFFFFFFFF:
             return "END"
         return f"UNK_{self.code:08X}"
@@ -382,6 +417,7 @@ class RdxFile:
     def __init__(self):
         self.header = RdxHeader()
         self.data = b""
+        self.endian = "<"
         self.actor = []
         self.obj = []
         self.item = []
@@ -402,14 +438,20 @@ class RdxFile:
         else:
             with open(source, "rb") as fh:
                 raw = fh.read()
-        if raw[:1] == bytes((PRS_FLAG,)):
-            self.data = prs.decompress(raw)
-        else:
+        endian = _detect_endian(raw)
+        if endian is not None:
             self.data = raw
-        magic = struct.unpack_from("<I", self.data, 0)[0]
-        if magic not in RDX_MAGICS:
-            raise ValueError(f"not a valid RDX/RDT file")
-        self.header.read(self.data)
+        else:
+            try:
+                dec = prs.decompress(raw)
+            except Exception as exc:
+                raise ValueError("not a valid RDX/RDT file") from exc
+            endian = _detect_endian(dec)
+            if endian is None:
+                raise ValueError("not a valid RDX/RDT file")
+            self.data = dec
+        self.endian = endian
+        self.header.read(self.data, endian)
         self._read_tables()
         return self
 
@@ -423,7 +465,7 @@ class RdxFile:
             o = base + i * cls.SIZE
             if o + cls.SIZE > len(self.data):
                 break
-            out.append(cls().read(self.data, o))
+            out.append(cls().read(self.data, o, self.endian))
         return out
 
     def _read_tables(self):
@@ -446,11 +488,12 @@ class RdxFile:
         base = self.header.sections[1]
         if base == 0:
             return
+        e = self.endian
         ptrs = []
         o = base
         while len(ptrs) < 512 and o + 4 <= len(self.data):
             slot = self.data[o : o + 4].decode("ascii", errors="replace")
-            v = struct.unpack_from("<i", self.data, o)[0]
+            v = struct.unpack_from(e + "i", self.data, o)[0]
             o += 4
             if v == 0 or slot == "SKIN" or slot.startswith("MDL"):
                 break
@@ -465,11 +508,11 @@ class RdxFile:
             if table.size < 0:
                 table.size = 0
             end = min(tp + table.size, len(self.data))
-            table.blobs = list(mlb.iter_mlb_blobs(self.data, tp, end))
+            table.blobs = list(mlb.iter_mlb_blobs(self.data, tp, end, e))
             for bo, _bs in table.blobs:
                 has = False
                 if bo + 16 <= len(self.data):
-                    has = struct.unpack_from("<i", self.data, bo + 8)[0] != -1
+                    has = struct.unpack_from(e + "i", self.data, bo + 8)[0] != -1
                 table.blob_tex.append(has)
             self.models.append(table)
 
@@ -478,7 +521,8 @@ class RdxFile:
         base = self.header.sections[4]
         if base == 0 or base + 4 > len(self.data):
             return
-        count = struct.unpack_from("<I", self.data, base)[0]
+        e = self.endian
+        count = struct.unpack_from(e + "I", self.data, base)[0]
         if count > 4096:
             return
         ptrs = []
@@ -486,7 +530,7 @@ class RdxFile:
             o = base + 4 + i * 4
             if o + 4 > len(self.data):
                 break
-            v = struct.unpack_from("<i", self.data, o)[0]
+            v = struct.unpack_from(e + "i", self.data, o)[0]
             if v == 0:
                 break
             ptrs.append(v)
@@ -497,10 +541,10 @@ class RdxFile:
             o = tp
             end = tp + table.size
             while o + 8 <= end and o + 8 <= len(self.data):
-                code = struct.unpack_from("<I", self.data, o)[0]
+                code = struct.unpack_from(e + "I", self.data, o)[0]
                 if code == 0xFFFFFFFF:
                     break
-                size = struct.unpack_from("<i", self.data, o + 4)[0]
+                size = struct.unpack_from(e + "i", self.data, o + 4)[0]
                 if size <= 0:
                     o += 32
                     continue
@@ -604,6 +648,10 @@ class RdxFile:
                 if blk.size == 0:
                     continue
                 parsed_num, parsed_entries = tex.parse_pvpl(self.data, blk.data_offset)
+            elif blk.kind == "GVP":
+                if blk.size == 0:
+                    continue
+                parsed_num, parsed_entries = tex.parse_gvpl(self.data, blk.data_offset)
             else:
                 continue
 

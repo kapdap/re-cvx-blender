@@ -236,7 +236,7 @@ class TextureRepo:
             table = self.rdx.textures[table_idx]
             blk = table.blocks[block_idx]
             try:
-                if blk.kind == "PVR":
+                if blk.kind in ("PVR", "GVR"):
                     _palnum, pli_entries = self.rdx.pli_state_at(table_idx, block_idx)
                     pal = pli_entries if _palnum > 0 else None
                     self._docs[key] = tex.decode(self.rdx.data, blk.data_offset, pal)
@@ -251,7 +251,7 @@ class TextureRepo:
             pics = []
             table = self.rdx.textures[table_idx]
             for bi, blk in enumerate(table.blocks):
-                if blk.kind not in ("TIM2", "PVR"):
+                if blk.kind not in ("TIM2", "PVR", "GVR"):
                     continue
                 doc = self.doc(table_idx, bi)
                 if doc is None:

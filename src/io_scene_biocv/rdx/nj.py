@@ -50,6 +50,45 @@ def _cstr(data, offset, limit=256):
         return ""
 
 
+def _chunk_head(data, o, endian="<"):
+    if endian == ">":
+        if o + 4 > len(data) or o < 0:
+            return 0, 0, 0
+        w0 = struct.unpack_from(">H", data, o)[0]
+        t = w0 & 0xFF
+        attr = (w0 >> 8) & 0xFF
+        sizew = struct.unpack_from(">H", data, o + 2)[0]
+        return t, attr, sizew
+    t = data[o] if 0 <= o < len(data) else 0
+    attr = data[o + 1] if 0 <= o + 1 < len(data) else 0
+    sizew = (
+        struct.unpack_from("<H", data, o + 2)[0] if o + 4 <= len(data) and o >= 0 else 0
+    )
+    return t, attr, sizew
+
+
+def _vlist_head(data, o, endian="<"):
+    if endian == ">":
+        if o + 8 > len(data) or o < 0:
+            return -1, 0, 0
+        w0 = struct.unpack_from(">I", data, o)[0]
+        w1 = struct.unpack_from(">I", data, o + 4)[0]
+        return (w0 & 0xFF, w1 & 0xFFFF, (w1 >> 16) & 0xFFFF)
+    vtype = data[o] if 0 <= o < len(data) else -1
+    if o + 8 > len(data) or o < 0:
+        return vtype, 0, 0
+    us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
+    return vtype, us_ofs, us_max
+
+
+def _t0_at(data, o, endian="<"):
+    if endian == ">":
+        if o + 2 > len(data) or o < 0:
+            return CHUNK_END
+        return struct.unpack_from(">H", data, o)[0] & 0xFF
+    return data[o] if 0 <= o < len(data) else CHUNK_END
+
+
 class NjError(ValueError):
     pass
 
@@ -76,7 +115,7 @@ class NjTexList:
         self.entries = []
         self.names = []
 
-    def read(self, data, dat_top, tex_off):
+    def read(self, data, dat_top, tex_off, endian="<"):
         self.present = False
         self.tex_off = tex_off
         self.header_offset = 0
@@ -90,7 +129,7 @@ class NjTexList:
         o = dat_top + tex_off
         if o < 0 or o + SIZE_TEXLIST > len(data):
             return self
-        tex_ptr, count = struct.unpack_from("<2i", data, o)
+        tex_ptr, count = struct.unpack_from(endian + "2i", data, o)
         if count < 0 or count > 4096:
             return self
         self.present = True
@@ -103,7 +142,7 @@ class NjTexList:
             eo = arr + i * SIZE_TEXNAME
             if eo < 0 or eo + SIZE_TEXNAME > len(data):
                 break
-            fn_off, attr, texaddr = struct.unpack_from("<3i", data, eo)
+            fn_off, attr, texaddr = struct.unpack_from(endian + "3i", data, eo)
             entry = NjTexName()
             entry.index = i
             entry.entry_offset = eo
@@ -133,7 +172,7 @@ class NjObject:
         self.model_index = -1
         self.hidden = False
 
-    def read(self, data, offset, index):
+    def read(self, data, offset, index, endian="<"):
         self.index = index
         (
             self.evalflags,
@@ -149,7 +188,7 @@ class NjObject:
             sz,
             self.child,
             self.sibling,
-        ) = struct.unpack_from("<2i3f3i3f2i", data, offset)
+        ) = struct.unpack_from(endian + "2i3f3i3f2i", data, offset)
         self.pos = (px, py, pz)
         self.ang = (ax, ay, az)
         self.scl = (sx, sy, sz)
@@ -172,11 +211,11 @@ class NjModel:
         self.notes = []
 
 
-def read_model(data, dat_top, mno):
+def read_model(data, dat_top, mno, endian="<"):
     if mno + SIZE_CNK_MODEL > len(data):
         raise NjError("model node out of range")
-    vlist_off, plist_off = struct.unpack_from("<2i", data, mno)
-    cx, cy, cz, r = struct.unpack_from("<4f", data, mno + 8)
+    vlist_off, plist_off = struct.unpack_from(endian + "2i", data, mno)
+    cx, cy, cz, r = struct.unpack_from(endian + "4f", data, mno + 8)
     model = NjModel()
     model.center = (cx, cy, cz)
 
@@ -185,13 +224,18 @@ def read_model(data, dat_top, mno):
         model.notes.append("no vlist")
         return model
     vo = dat_top + vlist_off
-    vtype = data[vo] if 0 <= vo < len(data) else -1
+    if endian == ">":
+        vtype, _, _ = (
+            _vlist_head(data, vo, endian) if 0 <= vo < len(data) else (-1, 0, 0)
+        )
+    else:
+        vtype = data[vo] if 0 <= vo < len(data) else -1
     if vtype == CHUNK_CV_VN_PS2:
-        _read_vlist_ps2(data, vo, model)
+        _read_vlist_ps2(data, vo, model, endian)
     elif vtype == CHUNK_CV_VN:
-        _read_vlist_cv_vn(data, vo, model)
+        _read_vlist_cv_vn(data, vo, model, endian)
     elif vtype == CHUNK_CV:
-        _read_vlist_cv(data, vo, model)
+        _read_vlist_cv(data, vo, model, endian)
     else:
         model.notes.append(f"unsupported vertex type {vtype:#x}")
         return model
@@ -199,26 +243,29 @@ def read_model(data, dat_top, mno):
         model.notes.append("no plist")
         return model
     if plist_off == 0:
-        t0 = data[dat_top] if 0 <= dat_top < len(data) else CHUNK_END
+        t0 = _t0_at(data, dat_top, endian) if 0 <= dat_top < len(data) else CHUNK_END
         if t0 == CHUNK_END:
             return model
         if t0 >= 76:
             model.notes.append("no plist")
             return model
-    _read_plist(data, dat_top + plist_off, model)
+    _read_plist(data, dat_top + plist_off, model, endian)
     return model
 
 
-def _read_vlist_ps2(data, o, model):
+def _read_vlist_ps2(data, o, model, endian="<"):
     if o + HDR_PS_SIZE > len(data) or o < 0:
         model.notes.append("vlist out of range")
         return
-    vtype = data[o]
+    if endian == ">":
+        vtype, us_ofs, us_max = _vlist_head(data, o, endian)
+    else:
+        vtype = data[o]
+        us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     if vtype != CHUNK_CV_VN_PS2:
         model.notes.append(f"unsupported vertex type {vtype:#x}")
         return
 
-    us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     base = o + HDR_PS_SIZE
     need = us_ofs + us_max
     while len(model.verts) < need:
@@ -229,21 +276,24 @@ def _read_vlist_ps2(data, o, model):
         if bo + 28 > len(data):
             model.notes.append("vertex overrun at %d" % i)
             break
-        x, y, z = struct.unpack_from("<3f", data, bo)
-        nx, ny, nz = struct.unpack_from("<3f", data, bo + 16)
+        x, y, z = struct.unpack_from(endian + "3f", data, bo)
+        nx, ny, nz = struct.unpack_from(endian + "3f", data, bo + 16)
         model.verts[us_ofs + i] = (x, y, z)
         model.normals[us_ofs + i] = (nx, ny, nz)
 
 
-def _read_vlist_cv(data, o, model):
+def _read_vlist_cv(data, o, model, endian="<"):
     if o + HDR_CV_SIZE > len(data) or o < 0:
         model.notes.append("vlist out of range")
         return
-    vtype = data[o]
+    if endian == ">":
+        vtype, us_ofs, us_max = _vlist_head(data, o, endian)
+    else:
+        vtype = data[o]
+        us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     if vtype != CHUNK_CV:
         model.notes.append(f"unsupported vertex type {vtype:#x}")
         return
-    us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     base = o + HDR_CV_SIZE
     need = us_ofs + us_max
     while len(model.verts) < need:
@@ -254,20 +304,23 @@ def _read_vlist_cv(data, o, model):
         if bo + 12 > len(data):
             model.notes.append("vertex overrun at %d" % i)
             break
-        x, y, z = struct.unpack_from("<3f", data, bo)
+        x, y, z = struct.unpack_from(endian + "3f", data, bo)
         model.verts[us_ofs + i] = (x, y, z)
         model.normals[us_ofs + i] = (0.0, 0.0, 0.0)
 
 
-def _read_vlist_cv_vn(data, o, model):
+def _read_vlist_cv_vn(data, o, model, endian="<"):
     if o + HDR_CV_SIZE > len(data) or o < 0:
         model.notes.append("vlist out of range")
         return
-    vtype = data[o]
+    if endian == ">":
+        vtype, us_ofs, us_max = _vlist_head(data, o, endian)
+    else:
+        vtype = data[o]
+        us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     if vtype != CHUNK_CV_VN:
         model.notes.append(f"unsupported vertex type {vtype:#x}")
         return
-    us_ofs, us_max = struct.unpack_from("<2H", data, o + 4)
     base = o + HDR_CV_SIZE
     need = us_ofs + us_max
     while len(model.verts) < need:
@@ -278,13 +331,13 @@ def _read_vlist_cv_vn(data, o, model):
         if bo + 24 > len(data):
             model.notes.append("vertex overrun at %d" % i)
             break
-        x, y, z = struct.unpack_from("<3f", data, bo)
-        nx, ny, nz = struct.unpack_from("<3f", data, bo + 12)
+        x, y, z = struct.unpack_from(endian + "3f", data, bo)
+        nx, ny, nz = struct.unpack_from(endian + "3f", data, bo + 12)
         model.verts[us_ofs + i] = (x, y, z)
         model.normals[us_ofs + i] = (nx, ny, nz)
 
 
-def _read_plist(data, o, model):
+def _read_plist(data, o, model, endian="<"):
     texid = 0
     mat = -1
     guard = 0
@@ -293,7 +346,11 @@ def _read_plist(data, o, model):
         if guard > 100000 or o + 1 > len(data) or o < 0:
             model.notes.append("plist overrun/guard")
             return
-        t = data[o]
+        if endian == ">":
+            t, attr, _sz = _chunk_head(data, o, endian)
+        else:
+            t = data[o]
+            attr = 0
         if t == CHUNK_END:
             return
         if t >= 76:
@@ -313,14 +370,17 @@ def _read_plist(data, o, model):
                 model.notes.append("tiny chunk overrun")
                 return
             if t == CHUNK_TID:
-                raw = struct.unpack_from("<H", data, o + 2)[0]
+                raw = struct.unpack_from(endian + "H", data, o + 2)[0]
                 texid = raw & 0xFFF
             o += 4
             continue
         if o + 4 > len(data):
             model.notes.append("plist head overrun")
             return
-        sizew = struct.unpack_from("<H", data, o + 2)[0]
+        if endian == ">":
+            _t, _attr, sizew = _chunk_head(data, o, endian)
+        else:
+            sizew = struct.unpack_from("<H", data, o + 2)[0]
         if t in (
             CHUNK_CM_D,
             CHUNK_CM_A,
@@ -337,15 +397,18 @@ def _read_plist(data, o, model):
             mat = len(model.materials) - 1
             continue
         if t in (CHUNK_CS, CHUNK_CS_UVN, CHUNK_CS_UVH):
-            attr = data[o + 1] if o + 1 < len(data) else 0
-            no = _read_strips(data, o, t, texid, mat, model, attr)
+            if endian == ">":
+                _t, attr, _sz2 = _chunk_head(data, o, endian)
+            else:
+                attr = data[o + 1] if o + 1 < len(data) else 0
+            no = _read_strips(data, o, t, texid, mat, model, attr, endian)
             if no < 0:
                 model.notes.append(f"strip chunk overrun t={t:#x}")
                 return
             o = no
             continue
         if t == CHUNK_CO_P3:
-            no = _skip_cop3(data, o)
+            no = _skip_cop3(data, o, endian)
             if no < 0:
                 model.notes.append("cop3 overrun")
                 return
@@ -359,7 +422,7 @@ def _read_plist(data, o, model):
             o = end
             continue
         if t in (CHUNK_CV_VN_PS2, CHUNK_CV_VN, CHUNK_CV):
-            no = _skip_cvn(data, o, t)
+            no = _skip_cvn(data, o, t, endian)
             if no < 0:
                 model.notes.append("vertex chunk in plist overrun")
                 return
@@ -415,7 +478,7 @@ def _read_material(data, o, t, model):
     return o + 4 + need
 
 
-def _read_strips(data, o, t, texid, mat, model, attr=0):
+def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
     if t == CHUNK_CS:
         scale = None
     elif t == CHUNK_CS_UVN:
@@ -427,7 +490,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0):
     blend = bool(attr & 0x08)
     if o + 6 > len(data):
         return -1
-    first = struct.unpack_from("<H", data, o + 4)[0]
+    first = struct.unpack_from(endian + "H", data, o + 4)[0]
     if t == CHUNK_CS:
         us_next = (first >> 14) & 0x3
         nstrips = first & 0x3FFF
@@ -438,7 +501,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0):
     for _ in range(nstrips):
         if p + 2 > len(data):
             break
-        h = struct.unpack_from("<h", data, p)[0]
+        h = struct.unpack_from(endian + "h", data, p)[0]
         p += 2
         n = -h if h < 0 else h
         if n < 0 or n > 100000:
@@ -451,13 +514,13 @@ def _read_strips(data, o, t, texid, mat, model, attr=0):
             if p + est > len(data):
                 ok = False
                 break
-            idx = struct.unpack_from("<H", data, p)[0]
+            idx = struct.unpack_from(endian + "H", data, p)[0]
             if scale is None:
                 els.append((idx, 0.0, 0.0))
                 p += 2
             else:
-                u = struct.unpack_from("<H", data, p + 2)[0] * scale
-                v = struct.unpack_from("<H", data, p + 4)[0] * scale
+                u = struct.unpack_from(endian + "H", data, p + 2)[0] * scale
+                v = struct.unpack_from(endian + "H", data, p + 4)[0] * scale
                 els.append((idx, u, v))
                 p += 6
             if scale is None and _k >= 2 and us_next:
@@ -487,18 +550,26 @@ def _read_strips(data, o, t, texid, mat, model, attr=0):
     return p
 
 
-def _skip_cvn(data, o, t):
+def _skip_cvn(data, o, t, endian="<"):
     if t == CHUNK_CV_VN_PS2:
         if o + HDR_PS_SIZE > len(data):
             return -1
-        us_max = struct.unpack_from("<H", data, o + 6)[0]
+        if endian == ">":
+            w1 = struct.unpack_from(">I", data, o + 4)[0]
+            us_max = (w1 >> 16) & 0xFFFF
+        else:
+            us_max = struct.unpack_from("<H", data, o + 6)[0]
         end = o + HDR_PS_SIZE + us_max * VERT_STRIDE_PS2
         if end > len(data):
             return -1
         return end
     if o + 8 > len(data):
         return -1
-    count = struct.unpack_from("<H", data, o + 6)[0]
+    if endian == ">":
+        w1 = struct.unpack_from(">I", data, o + 4)[0]
+        count = (w1 >> 16) & 0xFFFF
+    else:
+        count = struct.unpack_from("<H", data, o + 6)[0]
     if t == CHUNK_CV:
         end = o + HDR_CV_SIZE + count * VERT_STRIDE_CV
     else:
@@ -508,10 +579,10 @@ def _skip_cvn(data, o, t):
     return end
 
 
-def _skip_cop3(data, o):
+def _skip_cop3(data, o, endian="<"):
     if o + 6 > len(data):
         return -1
-    word = struct.unpack_from("<H", data, o + 4)[0]
+    word = struct.unpack_from(endian + "H", data, o + 4)[0]
     us_next = (word >> 14) & 0x3
     us_poly = word & 0x3FFF
     end = o + 6 + us_poly * (3 + us_next) * 2
