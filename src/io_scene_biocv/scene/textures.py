@@ -330,10 +330,20 @@ class TextureRepo:
                 alpha_in = _find_socket(bsdf.inputs, "Alpha", None)
                 alpha_out = _find_socket(tex_node.outputs, "Alpha", 1)
                 if alpha_in is not None and alpha_out is not None:
-                    try:
-                        mat.node_tree.links.new(alpha_out, alpha_in)
-                    except RuntimeError:
-                        pass
+                    if alpha < 1.0:
+                        math_node = mat.node_tree.nodes.new("ShaderNodeMath")
+                        math_node.operation = "MULTIPLY"
+                        math_node.inputs[1].default_value = alpha
+                        try:
+                            mat.node_tree.links.new(alpha_out, math_node.inputs[0])
+                            mat.node_tree.links.new(math_node.outputs[0], alpha_in)
+                        except RuntimeError:
+                            pass
+                    else:
+                        try:
+                            mat.node_tree.links.new(alpha_out, alpha_in)
+                        except RuntimeError:
+                            pass
                 if alpha < 1.0 and alpha_in is not None and not list(alpha_in.links):
                     alpha_in.default_value = alpha
             else:

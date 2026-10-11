@@ -13,6 +13,10 @@ FMT_C4 = 8
 FMT_C8 = 9
 FMT_CMPR = 14
 
+TLUT_IA8 = 0
+TLUT_RGB565 = 1
+TLUT_RGB5A3 = 2
+
 
 def _scale5(v):
     return (v * 255) // 31
@@ -44,6 +48,12 @@ def _decode_rgb5a3(v):
     g = _scale4((v >> 4) & 0x0F)
     b = _scale4(v & 0x0F)
     return r, g, b, (a * 255) // 7
+
+
+def _decode_ia8(v):
+    i = (v >> 8) & 0xFF
+    a = v & 0xFF
+    return i, i, i, a
 
 
 def _decode_cmpr_block(data, off):
@@ -205,10 +215,10 @@ def _decode_rgba8_tiled(src, width, height):
                     dx = tx * 4 + x
                     dy = ty * 4 + y
                     o = (dy * width + dx) * 4
-                    out[o] = ar[i * 2]
+                    out[o] = ar[i * 2 + 1]
                     out[o + 1] = gb[i * 2]
                     out[o + 2] = gb[i * 2 + 1]
-                    out[o + 3] = ar[i * 2 + 1]
+                    out[o + 3] = ar[i * 2]
     return bytes(out)
 
 
@@ -350,13 +360,19 @@ def parse_gvpl(data, offset):
         return 0, []
     if count <= 0 or count > 256:
         return 0, []
+    if _fmt == TLUT_IA8:
+        decode = _decode_ia8
+    elif _fmt == TLUT_RGB5A3:
+        decode = _decode_rgb5a3
+    else:
+        decode = _decode_rgb565
     entries = []
     for i in range(count):
         try:
             v = struct.unpack_from(">H", data, offset + 16 + i * 2)[0]
         except struct.error:
             return 0, []
-        r, g, b, a = _decode_rgb565(v)
+        r, g, b, a = decode(v)
         c = r | (g << 8) | (b << 16) | (a << 24)
         entries.append((c, 0, 0, 0))
     return count, entries

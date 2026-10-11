@@ -3,11 +3,6 @@
 Agent guidelines for "BioCV Scene Importer" development, a Blender add-on that imports 3D scenes
 from **Resident Evil: Code: Veronica** room data files.
 
-## Development
-
-- Never write migration code or legacy fallbacks when refactoring.
-- Write tests only when explicitly asked.
-
 ## Building
 
 - Run `python build.py` to create `dist/add-on-io_scene_biocv-v<version>.zip`.
