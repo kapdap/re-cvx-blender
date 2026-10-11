@@ -23,11 +23,9 @@ version = "0.1.0"
 dev = ["commit-and-tag-version>=1.0.1", "ruff>=0.17.0"]
 
 [tool.commit-and-tag-version]
-bump_files = [
-  {filename = "pyproject.toml", type = "python"},
-  {filename = "src/io_scene_biocv/blender_manifest.toml", type = "python"},
-]
+bump_files = ["pyproject.toml", {filename = "src/io_scene_biocv/blender_manifest.toml", type = "python"}]
 package_files = ["pyproject.toml"]
+releaseCommitMessageFormat = "chore(release): v{{currentTag}}"
 tag_prefix = "v"
 
 [tool.ruff]
