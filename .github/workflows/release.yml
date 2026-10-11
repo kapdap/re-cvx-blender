@@ -14,8 +14,6 @@ jobs:
       id-token: write
 
     env:
-      Release_Name: "BioCV Scene Importer"
-      Release_Body: "BioCV Scene Importer"
       Addon_Name: io_scene_biocv
 
     steps:
@@ -27,9 +25,24 @@ jobs:
         with:
           python-version: 3.x
 
+      - name: Bump version
+        run: |
+          pip install "commit-and-tag-version>=1.0.1"
+          commit-and-tag-version --skip-tag --skip-commit
+
       - name: Build Blender addon
         id: build
         run: python build.py -a ${{ env.Addon_Name }} -g
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml src/${{ env.Addon_Name }}/blender_manifest.toml CHANGELOG.md
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(release): v${{ steps.build.outputs.version }}"
+            git push origin HEAD:main
+          fi
 
       - name: Upload zip to release
         uses: svenstaro/upload-release-action@v2
@@ -37,6 +50,6 @@ jobs:
           file: ${{ steps.build.outputs.asset_path }}
           asset_name: ${{ steps.build.outputs.asset_file }}
           release_name: v${{ steps.build.outputs.release }}
-          body: ${{ env.Release_Body }} v${{ steps.build.outputs.release }}
+          body: ${{ steps.build.outputs.changelog }}
           tag: v${{ steps.build.outputs.release }}
           overwrite: true

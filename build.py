@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import sys
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -91,12 +92,41 @@ def write_zip(out_zip, src):
             z.write(path, path.relative_to(src).as_posix())
 
 
+def read_changelog(version):
+    path = ROOT / "CHANGELOG.md"
+    if not path.is_file():
+        return ""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if (m := re.match(r"^## \[?([^\]\s(]+)", line)) and m.group(1) == version
+        ),
+        None,
+    )
+    if start is None:
+        return ""
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
+        len(lines),
+    )
+    body = "\n".join(lines[start + 1 : end]).strip()
+    m = re.search(r"\(https?://[^)]+\)", lines[start])
+    if not m:
+        return body
+    link = f"**Full Changelog**: {m.group(0)[1:-1]}"
+    return f"{body}\n\n{link}" if body else link
+
+
 def emit_github(outputs):
     path = os.environ.get("GITHUB_OUTPUT")
     if not path:
         return
-    with open(path, "a", encoding="utf-8") as f:
-        f.writelines(f"{key}={value}\n" for key, value in outputs.items())
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        for key, value in outputs.items():
+            delimiter = f"EOF_{uuid.uuid4().hex}"
+            f.write(f"{key}<<{delimiter}\n{value}\n{delimiter}\n")
 
 
 def main(argv=None):
@@ -113,6 +143,7 @@ def main(argv=None):
         return
     emit_github(
         {
+            "changelog": read_changelog(version),
             "asset_name": out_zip.stem,
             "asset_file": out_zip.name,
             "asset_ext": out_zip.suffix.lstrip("."),
