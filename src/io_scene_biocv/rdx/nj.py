@@ -206,6 +206,7 @@ class NjModel:
         self.mats = []
         self.materials = []
         self.face_blend = []
+        self.face_nat = []
         self.center = (0.0, 0.0, 0.0)
         self.radius = 0.0
         self.notes = []
@@ -488,6 +489,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
     else:
         return -1
     blend = bool(attr & 0x08)
+    nat = bool(attr & 0x80)
     if o + 6 > len(data):
         return -1
     first = struct.unpack_from(endian + "H", data, o + 4)[0]
@@ -547,6 +549,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
             model.texids.append(texid)
             model.mats.append(mat)
             model.face_blend.append(blend)
+            model.face_nat.append(nat)
     return p
 
 

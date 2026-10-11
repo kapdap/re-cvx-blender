@@ -5,9 +5,7 @@ from .common import convert_pos
 
 def _face_material_alpha(model, mat_idx):
     try:
-        materials = getattr(model, "materials", None)
-        if materials is None:
-            return 1.0
+        materials = model.materials
         entry = materials[mat_idx] if 0 <= mat_idx < len(materials) else None
     except (TypeError, IndexError):
         return 1.0
@@ -19,7 +17,7 @@ def _face_material_alpha(model, mat_idx):
         return 1.0
 
 
-def _tex_has_real_alpha(tex_repo, tex_table, texid):
+def _tex_alpha_kind(tex_repo, tex_table, texid):
     try:
         pics = tex_repo.table_pics(tex_table)
         if 0 <= texid < len(pics):
@@ -30,16 +28,15 @@ def _tex_has_real_alpha(tex_repo, tex_table, texid):
     return False
 
 
-def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx):
-
+def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False):
     a = _face_material_alpha(model, mat_idx) if blend else 1.0
     if not blend:
-        return (texid, False, 1.0)
+        return (texid, False, 1.0, nat)
     if a < 0.999:
-        return (texid, True, round(a, 3))
-    if _tex_has_real_alpha(tex_repo, tex_table, texid):
-        return (texid, True, 1.0)
-    return (texid, False, 1.0)
+        return (texid, True, round(a, 3), nat)
+    if _tex_alpha_kind(tex_repo, tex_table, texid):
+        return (texid, True, 1.0, nat)
+    return (texid, False, 1.0, nat)
 
 
 def build_mesh(mesh_key, model, tex_repo, tex_table):
@@ -66,24 +63,28 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
             print("RDX: UV assign failed for %s: %s" % (mesh_key, exc))
 
     if tex_repo is not None and tex_table is not None and model.faces:
-        blends = list(getattr(model, "face_blend", []))
+        blends = list(model.face_blend)
         if len(blends) != len(model.faces):
             blends = [False] * len(model.faces)
-        mats_list = list(getattr(model, "mats", []))
+        nats = list(model.face_nat)
+        if len(nats) != len(model.faces):
+            nats = [False] * len(model.faces)
+        mats_list = list(model.mats)
         if len(mats_list) != len(model.faces):
             mats_list = [-1] * len(model.faces)
         keys = [
-            _face_slot_key(model, tex_repo, tex_table, tid, blend, mi)
-            for tid, blend, mi in zip(model.texids, blends, mats_list)
+            _face_slot_key(model, tex_repo, tex_table, tid, blend, mi, nat)
+            for tid, blend, mi, nat in zip(model.texids, blends, mats_list, nats)
         ]
         slot_of = {}
         for key in sorted(set(keys)):
-            tid, transparent, a = key
+            tid, transparent, a, nat = key
             mat = tex_repo.material(
                 tex_table,
                 tid,
-                transparent=transparent,
-                alpha=(a if transparent else 1.0),
+                transparent,
+                (a if transparent else 1.0),
+                nat,
             )
             if mat is not None:
                 mesh.materials.append(mat)

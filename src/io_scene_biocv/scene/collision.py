@@ -23,7 +23,7 @@ def _ensure_material(name, color):
         if alpha_sock is not None:
             alpha_sock.default_value = alpha
     if alpha < 1.0:
-        mat.blend_method = "BLEND"
+        mat.surface_render_method = "BLENDED"
     return mat
 
 
