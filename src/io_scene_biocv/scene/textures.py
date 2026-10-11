@@ -37,10 +37,7 @@ def _make_matte(bsdf):
         sock = _find_socket(inputs, name, idx)
         if sock is None:
             continue
-        try:
-            sock.default_value = val
-        except (AttributeError, TypeError, ReferenceError):
-            pass
+        sock.default_value = val
 
 
 def _set_material_opaque(mat):
@@ -62,15 +59,9 @@ def _unlink_alpha(mat, bsdf):
     alpha_in = _find_socket(bsdf.inputs, "Alpha", None)
     if alpha_in is None:
         return
-    try:
-        for link in list(alpha_in.links):
-            mat.node_tree.links.remove(link)
-    except (AttributeError, ReferenceError):
-        pass
-    try:
-        alpha_in.default_value = 1.0
-    except (AttributeError, TypeError):
-        pass
+    for link in list(alpha_in.links):
+        mat.node_tree.links.remove(link)
+    alpha_in.default_value = 1.0
 
 
 def _bleed_transparent_rgb(raw, w, h):
@@ -280,14 +271,8 @@ class TextureRepo:
                 flat[dst : dst + rowlen] = [b / 255.0 for b in raw[src : src + rowlen]]
             img.pixels = flat
             img.pack()
-        try:
-            img.alpha_mode = "STRAIGHT" if kind != "OPAQUE" else "NONE"
-        except (AttributeError, TypeError):
-            pass
-        try:
-            img.colorspace_settings.name = "sRGB"
-        except (AttributeError, TypeError):
-            pass
+        img.alpha_mode = "STRAIGHT" if kind != "OPAQUE" else "NONE"
+        img.colorspace_settings.name = "sRGB"
         self.images[key] = img
         return img
 
@@ -326,7 +311,6 @@ class TextureRepo:
         else:
             name = "%sRDX_%d_%d" % (self.prefix, table_idx, texid)
         mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-        mat.use_nodes = True
         bsdf = _find_node(mat.node_tree.nodes, "BSDF_PRINCIPLED", "Principled BSDF")
         _make_matte(bsdf)
         if img is not None and bsdf is not None:
@@ -338,7 +322,7 @@ class TextureRepo:
                     mat.node_tree.links.new(
                         _find_socket(tex_node.outputs, "Color", 0), base
                     )
-                except (RuntimeError, TypeError):
+                except RuntimeError:
                     pass
             if transparent and kind != "OPAQUE":
                 cutout = kind == "CUTOUT" and not nat
@@ -348,39 +332,27 @@ class TextureRepo:
                 if alpha_in is not None and alpha_out is not None:
                     try:
                         mat.node_tree.links.new(alpha_out, alpha_in)
-                    except (RuntimeError, TypeError):
+                    except RuntimeError:
                         pass
                 if alpha < 1.0:
-                    try:
-                        if alpha_in is not None and not list(alpha_in.links):
-                            alpha_in.default_value = alpha
-                    except (AttributeError, TypeError, ReferenceError):
-                        pass
+                    if alpha_in is not None and not list(alpha_in.links):
+                        alpha_in.default_value = alpha
             else:
                 _set_material_opaque(mat)
                 _unlink_alpha(mat, bsdf)
                 if transparent and alpha < 1.0:
                     alpha_in = _find_socket(bsdf.inputs, "Alpha", None)
                     if alpha_in is not None:
-                        try:
-                            alpha_in.default_value = alpha
-                        except (AttributeError, TypeError):
-                            pass
+                        alpha_in.default_value = alpha
                     _set_material_transparent(mat, False)
         else:
-            try:
-                mat.diffuse_color = (0.8, 0.8, 0.8, 1.0)
-            except (AttributeError, TypeError):
-                pass
+            mat.diffuse_color = (0.8, 0.8, 0.8, 1.0)
             if transparent and alpha < 1.0:
                 _set_material_transparent(mat, False)
                 if bsdf is not None:
                     alpha_in = _find_socket(bsdf.inputs, "Alpha", None)
                     if alpha_in is not None:
-                        try:
-                            alpha_in.default_value = alpha
-                        except (AttributeError, TypeError):
-                            pass
+                        alpha_in.default_value = alpha
             else:
                 _set_material_opaque(mat)
                 if bsdf is not None:

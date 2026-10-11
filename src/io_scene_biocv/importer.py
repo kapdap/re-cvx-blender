@@ -94,5 +94,4 @@ def import_file(
 def _load_world(stem):
     name = "%sWORLD" % stem
     world = bpy.data.worlds.get(name) or bpy.data.worlds.new(name)
-    world.use_nodes = True
     return world

@@ -187,7 +187,7 @@ def classify_alpha(pixels):
     seen_full = False
     seen_mid = False
     for i in range(3, len(pixels), 4):
-        a = pixels[i] if isinstance(pixels[i], int) else ord(pixels[i])
+        a = pixels[i]
         if a == 0:
             seen_zero = True
         elif a == 255:

@@ -3,20 +3,6 @@ import bpy
 from .common import convert_pos
 
 
-def _face_material_alpha(model, mat_idx):
-    try:
-        materials = model.materials
-        entry = materials[mat_idx] if 0 <= mat_idx < len(materials) else None
-    except (TypeError, IndexError):
-        return 1.0
-    if not isinstance(entry, dict):
-        return 1.0
-    try:
-        return float(entry.get("alpha", 1.0))
-    except (TypeError, ValueError):
-        return 1.0
-
-
 def _tex_alpha_kind(tex_repo, tex_table, texid):
     try:
         pics = tex_repo.table_pics(tex_table)
@@ -26,6 +12,14 @@ def _tex_alpha_kind(tex_repo, tex_table, texid):
     except (AttributeError, IndexError, TypeError):
         pass
     return False
+
+
+def _face_material_alpha(model, mat_idx):
+    materials = model.materials
+    entry = materials[mat_idx] if 0 <= mat_idx < len(materials) else None
+    if entry is None:
+        return 1.0
+    return entry["alpha"]
 
 
 def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False):
