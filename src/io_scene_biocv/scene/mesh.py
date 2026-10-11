@@ -1,6 +1,6 @@
 import bpy
 
-from .common import convert_pos
+from .common import convert_normal, convert_pos
 
 
 def _tex_alpha_kind(tex_repo, tex_table, texid):
@@ -46,6 +46,41 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
         print(f"RDX: from_pydata failed for {mesh_key}: {exc}")
         return None
     mesh.update()
+
+    flats = list(getattr(model, "face_flat", []))
+    if len(flats) == len(model.faces) and len(mesh.polygons) == len(model.faces):
+        if "sharp_face" in mesh.attributes:
+            sharp = mesh.attributes["sharp_face"]
+            for poly, flat in zip(mesh.polygons, flats):
+                try:
+                    sharp.data[poly.index].value = bool(flat)
+                except (AttributeError, IndexError, TypeError):
+                    pass
+        else:
+            for poly, flat in zip(mesh.polygons, flats):
+                try:
+                    poly.use_smooth = not flat
+                except AttributeError:
+                    pass
+
+    normals = getattr(model, "normals", [])
+    if len(normals) == len(model.verts) and model.faces:
+        loop_normals = []
+        has_source = False
+        for face in model.faces:
+            for vi in face:
+                if 0 <= vi < len(normals):
+                    n = convert_normal(normals[vi])
+                    if n != (0.0, 0.0, 0.0):
+                        has_source = True
+                    loop_normals.append(n)
+                else:
+                    loop_normals.append((0.0, 0.0, 0.0))
+        if has_source and len(loop_normals) == len(mesh.loops):
+            try:
+                mesh.normals_split_custom_set(loop_normals)
+            except (RuntimeError, ValueError, TypeError) as exc:
+                print(f"RDX: normals assign failed for {mesh_key}: {exc}")
 
     if model.uvs and len(model.uvs) == len(model.faces):
         try:

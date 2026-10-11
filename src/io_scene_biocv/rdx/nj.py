@@ -206,6 +206,7 @@ class NjModel:
         self.mats = []
         self.materials = []
         self.face_blend = []
+        self.face_flat = []
         self.face_nat = []
         self.center = (0.0, 0.0, 0.0)
         self.radius = 0.0
@@ -489,6 +490,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
     else:
         return -1
     blend = bool(attr & 0x08)
+    flat = bool(attr & 0x20)
     nat = bool(attr & 0x80)
     if o + 6 > len(data):
         return -1
@@ -505,7 +507,8 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
             break
         h = struct.unpack_from(endian + "h", data, p)[0]
         p += 2
-        n = -h if h < 0 else h
+        rev = h < 0
+        n = -h if rev else h
         if n < 0 or n > 100000:
             model.notes.append(f"bad strip length {h}")
             break
@@ -542,13 +545,14 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
             a, b, c = els[k], els[k + 1], els[k + 2]
             if a[0] == b[0] or b[0] == c[0] or a[0] == c[0]:
                 continue
-            if (k % 2) == 1:
+            if ((k % 2) == 1) != rev:
                 a, b = b, a
             model.faces.append((a[0], b[0], c[0]))
             model.uvs.append(((a[1], a[2]), (b[1], b[2]), (c[1], c[2])))
             model.texids.append(texid)
             model.mats.append(mat)
             model.face_blend.append(blend)
+            model.face_flat.append(flat)
             model.face_nat.append(nat)
     return p
 
