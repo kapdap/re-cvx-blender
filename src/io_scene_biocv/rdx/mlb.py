@@ -69,7 +69,7 @@ class Mlb:
         for i in range(obj_num):
             oo = dat_top + obj_off + i * SIZE_CNK_OBJECT
             if oo < 0 or oo + SIZE_CNK_OBJECT > len(data):
-                self.notes.append("object array overrun at %d" % i)
+                self.notes.append(f"object array overrun at {i}")
                 break
             obj = NjObject()
             mo = obj.read(data, oo, i, endian)

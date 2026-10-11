@@ -15,7 +15,7 @@ def src_path(addon):
 
 def read_version(src):
     text = (src / "blender_manifest.toml").read_text(encoding="utf-8")
-    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if not m:
         raise RuntimeError("version not found in blender_manifest.toml")
     return m.group(1)
@@ -96,8 +96,7 @@ def emit_github(outputs):
     if not path:
         return
     with open(path, "a", encoding="utf-8") as f:
-        for key, value in outputs.items():
-            f.write(f"{key}={value}\n")
+        f.writelines(f"{key}={value}\n" for key, value in outputs.items())
 
 
 def main(argv=None):

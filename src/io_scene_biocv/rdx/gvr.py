@@ -132,7 +132,7 @@ class GvrPicture:
                 self.image_data, palette, self.width, self.height
             )
         else:
-            raise GvrError("unsupported GameCube pixel format %#x" % self.pixfmt)
+            raise GvrError(f"unsupported GameCube pixel format {self.pixfmt:#x}")
         self.total_size = 16 + len(self.image_data)
         if data[start : start + 4] == GCIX_MAGIC:
             self.total_size += 16
@@ -145,11 +145,11 @@ class GvrPicture:
 
 def _detile_4x4_16(src, width, height):
     if width <= 0 or height <= 0 or width % 4 or height % 4:
-        raise GvrError("bad tiled dimensions %dx%d" % (width, height))
+        raise GvrError(f"bad tiled dimensions {width}x{height}")
     n = width * height
     if len(src) < n * 2:
         raise GvrError("truncated tiled blob")
-    words = struct.unpack_from(">%dH" % n, src[: n * 2])
+    words = struct.unpack_from(f">{n}H", src[: n * 2])
     dst = [0] * n
     tw = width // 4
     for ty in range(height // 4):
@@ -189,7 +189,7 @@ def _decode_rgb565_tiled(src, width, height):
 
 def _decode_rgba8_tiled(src, width, height):
     if width <= 0 or height <= 0 or width % 4 or height % 4:
-        raise GvrError("bad RGBA8 dimensions %dx%d" % (width, height))
+        raise GvrError(f"bad RGBA8 dimensions {width}x{height}")
     if len(src) < width * height * 4:
         raise GvrError("truncated RGBA8 blob")
     out = bytearray(width * height * 4)
@@ -214,7 +214,7 @@ def _decode_rgba8_tiled(src, width, height):
 
 def _decode_cmpr_tiled(src, width, height):
     if width <= 0 or height <= 0 or width % 8 or height % 8:
-        raise GvrError("bad CMPR dimensions %dx%d" % (width, height))
+        raise GvrError(f"bad CMPR dimensions {width}x{height}")
     if len(src) < (width * height) // 2:
         raise GvrError("truncated CMPR blob")
     out = bytearray(width * height * 4)
@@ -240,7 +240,7 @@ def _decode_cmpr_tiled(src, width, height):
 
 def _detile_8x8_c4(src, width, height):
     if width <= 0 or height <= 0 or width % 8 or height % 8:
-        raise GvrError("bad C4 dimensions %dx%d" % (width, height))
+        raise GvrError(f"bad C4 dimensions {width}x{height}")
     if len(src) < (width * height) // 2:
         raise GvrError("truncated C4 blob")
     n = width * height
@@ -282,7 +282,7 @@ def _apply_gvpl_c4(src, palette, width, height):
 
 def _detile_8x4_c8(src, width, height):
     if width <= 0 or height <= 0 or width % 8 or height % 4:
-        raise GvrError("bad C8 dimensions %dx%d" % (width, height))
+        raise GvrError(f"bad C8 dimensions {width}x{height}")
     if len(src) < width * height:
         raise GvrError("truncated C8 blob")
     n = width * height

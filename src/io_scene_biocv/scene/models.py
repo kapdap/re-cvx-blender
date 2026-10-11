@@ -2,7 +2,7 @@ import bpy
 from mathutils import Matrix
 
 from ..rdx import mlb, nj
-from .common import EMPTY_SIZE, create_collection, convert_pos, convert_scale
+from .common import EMPTY_SIZE, convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
 from .placements import model_placements
 from .rotation import set_rotation
@@ -12,26 +12,26 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
     allowed = {"room", "actor", "obj", "item"} if kinds is None else set(kinds)
     coll = create_collection("MDL", root)
     mesh_cache = {}
-    node_prefix = "%sMDL" % stem
+    node_prefix = f"{stem}MDL"
 
     table_types, model_xforms = model_placements(rdx)
     for ti, table in enumerate(rdx.models):
         kind = table_types.get(ti, "room")
         if kind not in allowed:
             continue
-        tcoll = create_collection("MDL_%03d" % ti, coll)
+        tcoll = create_collection(f"MDL_{ti:03d}", coll)
         is_room = kind == "room"
         for bi, (bo, bs) in enumerate(table.blobs):
             try:
                 mlb_data = mlb.read_mlb(rdx.data, bo, bs, rdx.endian)
             except nj.NjError as exc:
-                print("RDX: MLB decode failed @%#x: %s" % (bo, exc))
+                print(f"RDX: MLB decode failed @{bo:#x}: {exc}")
                 continue
 
             empties = {}
             for obj in mlb_data.objects:
                 emp = bpy.data.objects.new(
-                    "%s_%03d_%d_NODE_%03d" % (node_prefix, ti, bi, obj.index), None
+                    f"{node_prefix}_{ti:03d}_{bi}_NODE_{obj.index:03d}", None
                 )
                 emp.empty_display_type = "PLAIN_AXES"
                 emp.empty_display_size = EMPTY_SIZE * 0.5
@@ -84,7 +84,7 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
                 model = mlb_data.models[obj.model_index]
                 if model is None or not model.faces:
                     continue
-                key = "%s%03d_%d_%d" % (stem, ti, bi, obj.model_index)
+                key = f"{stem}{ti:03d}_{bi}_{obj.model_index}"
                 tex_table = tex_assign.get((ti, bi), tex_assign.get((ti, 0)))
                 mesh = mesh_cache.get(key)
                 if mesh is None:
@@ -93,7 +93,7 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
                 if mesh is None:
                     continue
                 mobj = bpy.data.objects.new(
-                    "%s_%03d_%d_%03d" % (node_prefix, ti, bi, obj.index), mesh
+                    f"{node_prefix}_{ti:03d}_{bi}_{obj.index:03d}", mesh
                 )
                 tcoll.objects.link(mobj)
                 mobj.parent = empties[obj.index]

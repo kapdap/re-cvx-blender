@@ -253,9 +253,9 @@ class TextureRepo:
             raw = bytes(buf)
         if kind != "OPAQUE":
             raw = _bleed_transparent_rgb(raw, pic.width, pic.height)
-        name = "%sTEX_%d_%d_%d" % (self.prefix, table_idx, block_idx, pic_idx)
+        name = f"{self.prefix}TEX_{table_idx}_{block_idx}_{pic_idx}"
         if variant is not None:
-            name += "_v%d" % variant
+            name += f"_v{variant}"
         img = bpy.data.images.get(name)
         if img is None:
             img = bpy.data.images.new(
@@ -298,18 +298,18 @@ class TextureRepo:
                 kind = self.alpha_kind(table_idx, bi, pi, variant)
             else:
                 print(
-                    "RDX: texid %d out of range" % (texid),
+                    f"RDX: texid {texid} out of range",
                     flush=True,
                 )
         if transparent:
             if nat:
-                name = "%sRDX_%d_%d_TN" % (self.prefix, table_idx, texid)
+                name = f"{self.prefix}RDX_{table_idx}_{texid}_TN"
             else:
-                name = "%sRDX_%d_%d_T" % (self.prefix, table_idx, texid)
+                name = f"{self.prefix}RDX_{table_idx}_{texid}_T"
         elif nat:
-            name = "%sRDX_%d_%d_N" % (self.prefix, table_idx, texid)
+            name = f"{self.prefix}RDX_{table_idx}_{texid}_N"
         else:
-            name = "%sRDX_%d_%d" % (self.prefix, table_idx, texid)
+            name = f"{self.prefix}RDX_{table_idx}_{texid}"
         mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
         bsdf = _find_node(mat.node_tree.nodes, "BSDF_PRINCIPLED", "Principled BSDF")
         _make_matte(bsdf)
@@ -334,9 +334,8 @@ class TextureRepo:
                         mat.node_tree.links.new(alpha_out, alpha_in)
                     except RuntimeError:
                         pass
-                if alpha < 1.0:
-                    if alpha_in is not None and not list(alpha_in.links):
-                        alpha_in.default_value = alpha
+                if alpha < 1.0 and alpha_in is not None and not list(alpha_in.links):
+                    alpha_in.default_value = alpha
             else:
                 _set_material_opaque(mat)
                 _unlink_alpha(mat, bsdf)

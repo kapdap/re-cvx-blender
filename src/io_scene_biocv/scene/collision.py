@@ -1,6 +1,6 @@
 import bpy
 
-from .common import create_collection, convert_pos
+from .common import convert_pos, create_collection
 
 
 def _ensure_material(name, color):
@@ -28,7 +28,7 @@ def _ensure_material(name, color):
 
 def import_boxes(name, entries, root, color):
     coll = create_collection(name, root)
-    mat = _ensure_material("%s_MATERIAL" % name, color)
+    mat = _ensure_material(f"{name}_MATERIAL", color)
     box_faces = [
         (0, 1, 2, 3),
         (0, 4, 5, 1),
@@ -68,11 +68,11 @@ def import_boxes(name, entries, root, color):
                 (bx0, by1, bz1),
             ]
             faces = box_faces
-        mesh = bpy.data.meshes.new("%s_%03d_MESH" % (name, i))
+        mesh = bpy.data.meshes.new(f"{name}_{i:03d}_MESH")
         mesh.from_pydata(verts, [], faces)
         mesh.materials.append(mat)
         mesh.update()
-        obj = bpy.data.objects.new("%s_%03d" % (name, i), mesh)
+        obj = bpy.data.objects.new(f"{name}_{i:03d}", mesh)
         obj.display_type = "SOLID"
         obj.show_wire = True
         obj.show_all_edges = True

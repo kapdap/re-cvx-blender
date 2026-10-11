@@ -278,9 +278,9 @@ def _rgba16_to_rgba(inp, out, pixels, texa=0):
         g = ((v >> 5) & 0x1F) * 255 // 31
         b = ((v >> 10) & 0x1F) * 255 // 31
         if v & 0x8000:
-            a = 255 if not aem else (ta1 * 2 if ta1 * 2 < 255 else 255)
+            a = 255 if not aem else (min(255, ta1 * 2))
         else:
-            a = 0 if not aem else (ta0 * 2 if ta0 * 2 < 255 else 255)
+            a = 0 if not aem else (min(255, ta0 * 2))
         d = i * 4
         out[d] = r
         out[d + 1] = g
@@ -363,5 +363,5 @@ def _normalize_indexed_alpha(pixels, image_type, org_color_type, pict_format):
             alpha_is_half()
     for i in range(3, len(buf), 4):
         v = buf[i] * 2
-        buf[i] = 255 if v > 255 else v
+        buf[i] = min(v, 255)
     return bytes(buf)

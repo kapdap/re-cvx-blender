@@ -2,7 +2,7 @@ import math
 
 import bpy
 
-from .common import create_collection, convert_pos
+from .common import convert_pos, create_collection
 from .rotation import ninja_euler_sun
 
 
@@ -17,7 +17,7 @@ def import_lights(entries, root):
     coll = create_collection("LGT", root)
     for i, light in enumerate(entries):
         ltype = "SUN" if light.lsrc == 2 else "POINT"
-        data = bpy.data.lights.new("LGT_%03d" % i, ltype)
+        data = bpy.data.lights.new(f"LGT_{i:03d}", ltype)
         r, g, b = light.params[12], light.params[13], light.params[14]
         nr, fr = light.params[15], light.params[16]
         col, k = _game_light_levels(r, g, b)
@@ -28,7 +28,7 @@ def import_lights(entries, root):
             data.energy = k * nr * nr * 4.0 * math.pi
             if fr > 0.0:
                 data.cutoff_distance = fr
-        obj = bpy.data.objects.new("LGT_%03d" % i, data)
+        obj = bpy.data.objects.new(f"LGT_{i:03d}", data)
         px, py, pz = light.pos
         finite = all(math.isfinite(v) for v in (px, py, pz))
         obj.location = convert_pos((px, py, pz)) if finite else (0.0, 0.0, 0.0)

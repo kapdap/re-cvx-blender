@@ -505,8 +505,7 @@ class RdxFile:
             table = ModelTable()
             table.offset = tp
             table.size = (ptrs[i + 1] if i + 1 < len(ptrs) else motion) - tp
-            if table.size < 0:
-                table.size = 0
+            table.size = max(table.size, 0)
             end = min(tp + table.size, len(self.data))
             table.blobs = list(mlb.iter_mlb_blobs(self.data, tp, end, e))
             for bo, _bs in table.blobs:

@@ -64,7 +64,7 @@ _DECODERS = {
 
 def _detwiddle_16(src, width, height):
     n = width * height
-    words = struct.unpack_from("<%dH" % n, src)
+    words = struct.unpack_from(f"<{n}H", src)
     dst = [0] * n
     for y in range(height):
         base = y * width
@@ -99,13 +99,13 @@ def _detwiddle_4(src, width, height):
 def _detwiddle_rect_16(src, width, height):
     side = min(width, height)
     if max(width, height) % side != 0:
-        raise PvrError("bad rectangular size %dx%d" % (width, height))
+        raise PvrError(f"bad rectangular size {width}x{height}")
     tiles = max(width, height) // side
     if len(src) < tiles * side * side * 2:
         raise PvrError("truncated rectangular blob")
     dst = [0] * (width * height)
     for t in range(tiles):
-        words = struct.unpack_from("<%dH" % (side * side), src, t * side * side * 2)
+        words = struct.unpack_from(f"<{side * side}H", src, t * side * side * 2)
         for y in range(side):
             for x in range(side):
                 dx, dy = (t * side + x, y) if width >= height else (x, t * side + y)
@@ -116,7 +116,7 @@ def _detwiddle_rect_16(src, width, height):
 def _decode_words(words, pixfmt):
     decode = _DECODERS.get(pixfmt)
     if decode is None:
-        raise PvrError("unsupported Dreamcast pixel format %#x" % pixfmt)
+        raise PvrError(f"unsupported Dreamcast pixel format {pixfmt:#x}")
     out = bytearray(len(words) * 4)
     for i, v in enumerate(words):
         r, g, b, a = decode(v)
@@ -132,7 +132,7 @@ def _decode_vq(pixdata, width, height, pixfmt):
     nidx = (width // 2) * (height // 2)
     codebook_size = len(pixdata) - nidx
     if codebook_size <= 0 or codebook_size % 8 != 0:
-        raise PvrError("bad VQ codebook size %d" % codebook_size)
+        raise PvrError(f"bad VQ codebook size {codebook_size}")
     codebook = pixdata[:codebook_size]
     indices = _detwiddle_8(pixdata[codebook_size:], width // 2, height // 2)
     nentries = codebook_size // 8
@@ -193,7 +193,7 @@ class PvrPicture:
             self.image_data = pixdata
         elif self.datafmt == DATA_RECT:
             n = self.width * self.height
-            words = list(struct.unpack_from("<%dH" % n, pixdata))
+            words = list(struct.unpack_from(f"<{n}H", pixdata))
             self.pixels = _decode_words(words, self.pixfmt)
             self.image_data = pixdata
         elif self.datafmt in (DATA_VQ, DATA_SMALLVQ):
@@ -214,7 +214,7 @@ class PvrPicture:
                 indices, palette, self.pixfmt, self.width * self.height
             )
         else:
-            raise PvrError("unsupported Dreamcast data format %#x" % self.datafmt)
+            raise PvrError(f"unsupported Dreamcast data format {self.datafmt:#x}")
         self.total_size = end - start
         return end
 

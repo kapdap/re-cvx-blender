@@ -34,7 +34,7 @@ def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False)
 
 
 def build_mesh(mesh_key, model, tex_repo, tex_table):
-    mesh_name = "MDL_%s_MESH" % mesh_key
+    mesh_name = f"MDL_{mesh_key}_MESH"
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is not None:
         return mesh
@@ -43,7 +43,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
     try:
         mesh.from_pydata(verts, [], model.faces)
     except (ValueError, RuntimeError) as exc:
-        print("RDX: from_pydata failed for %s: %s" % (mesh_key, exc))
+        print(f"RDX: from_pydata failed for {mesh_key}: {exc}")
         return None
     mesh.update()
 
@@ -54,7 +54,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
                 for loop_idx, (u, v) in zip(poly.loop_indices, uvs):
                     uv_layer.data[loop_idx].uv = (u, 1.0 - v)
         except (RuntimeError, AttributeError) as exc:
-            print("RDX: UV assign failed for %s: %s" % (mesh_key, exc))
+            print(f"RDX: UV assign failed for {mesh_key}: {exc}")
 
     if tex_repo is not None and tex_table is not None and model.faces:
         blends = list(model.face_blend)

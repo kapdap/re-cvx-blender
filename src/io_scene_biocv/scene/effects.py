@@ -1,6 +1,6 @@
 import bpy
 
-from .common import EMPTY_SIZE, create_collection, convert_pos, convert_scale
+from .common import EMPTY_SIZE, convert_pos, convert_scale, create_collection
 from .rotation import set_rotation
 
 
@@ -8,7 +8,7 @@ def import_effects(entries, root):
     coll = create_collection("EFF", root)
     created = []
     for i, e in enumerate(entries):
-        obj = bpy.data.objects.new("EFF_%03d" % i, None)
+        obj = bpy.data.objects.new(f"EFF_{i:03d}", None)
         obj.empty_display_type = "SPHERE"
         obj.empty_display_size = EMPTY_SIZE
         obj.location = convert_pos(e.pos)

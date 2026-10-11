@@ -51,7 +51,7 @@ def decode(data, offset=0, palette=None):
         if palette is not None:
             pal = palette[1] if isinstance(palette, tuple) else palette
         return gvr.decode_gvr(data, offset, pal)
-    raise TexError("unknown texture blob at offset %d" % offset)
+    raise TexError(f"unknown texture blob at offset {offset}")
 
 
 def decode_tim2(data, offset=0):

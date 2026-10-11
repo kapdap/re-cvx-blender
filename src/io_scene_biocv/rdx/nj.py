@@ -275,7 +275,7 @@ def _read_vlist_ps2(data, o, model, endian="<"):
     for i in range(us_max):
         bo = base + i * VERT_STRIDE_PS2
         if bo + 28 > len(data):
-            model.notes.append("vertex overrun at %d" % i)
+            model.notes.append(f"vertex overrun at {i}")
             break
         x, y, z = struct.unpack_from(endian + "3f", data, bo)
         nx, ny, nz = struct.unpack_from(endian + "3f", data, bo + 16)
@@ -303,7 +303,7 @@ def _read_vlist_cv(data, o, model, endian="<"):
     for i in range(us_max):
         bo = base + i * VERT_STRIDE_CV
         if bo + 12 > len(data):
-            model.notes.append("vertex overrun at %d" % i)
+            model.notes.append(f"vertex overrun at {i}")
             break
         x, y, z = struct.unpack_from(endian + "3f", data, bo)
         model.verts[us_ofs + i] = (x, y, z)
@@ -330,7 +330,7 @@ def _read_vlist_cv_vn(data, o, model, endian="<"):
     for i in range(us_max):
         bo = base + i * VERT_STRIDE_CV_VN
         if bo + 24 > len(data):
-            model.notes.append("vertex overrun at %d" % i)
+            model.notes.append(f"vertex overrun at {i}")
             break
         x, y, z = struct.unpack_from(endian + "3f", data, bo)
         nx, ny, nz = struct.unpack_from(endian + "3f", data, bo + 12)
@@ -507,7 +507,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
         p += 2
         n = -h if h < 0 else h
         if n < 0 or n > 100000:
-            model.notes.append("bad strip length %d" % h)
+            model.notes.append(f"bad strip length {h}")
             break
         est = 2 if scale is None else 6
         els = []
@@ -531,7 +531,7 @@ def _read_strips(data, o, t, texid, mat, model, attr=0, endian="<"):
                     break
                 p += us_next * 2
         if not ok:
-            model.notes.append("strip overrun len=%d" % n)
+            model.notes.append(f"strip overrun len={n}")
             break
         nv = len(model.verts)
         if any(idx < 0 or idx >= nv for (idx, _u, _v) in els):

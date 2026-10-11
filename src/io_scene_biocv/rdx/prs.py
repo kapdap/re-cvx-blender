@@ -19,7 +19,7 @@ def decompress(data: bytes | bytearray) -> bytes:
     def get_byte() -> int:
         nonlocal pos
         if pos >= n:
-            raise PrsError("truncated PRS stream at offset %d" % pos)
+            raise PrsError(f"truncated PRS stream at offset {pos}")
         val = src[pos]
         pos += 1
         return val

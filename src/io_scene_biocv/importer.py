@@ -92,6 +92,6 @@ def import_file(
 
 
 def _load_world(stem):
-    name = "%sWORLD" % stem
+    name = f"{stem}WORLD"
     world = bpy.data.worlds.get(name) or bpy.data.worlds.new(name)
     return world

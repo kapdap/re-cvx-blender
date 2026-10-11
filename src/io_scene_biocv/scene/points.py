@@ -1,6 +1,6 @@
 import bpy
 
-from .common import EMPTY_SIZE, create_collection, convert_pos
+from .common import EMPTY_SIZE, convert_pos, create_collection
 from .rotation import set_rotation
 
 
@@ -8,7 +8,7 @@ def import_points(name, entries, root, display="PLAIN_AXES", zero_ax_az=False):
     coll = create_collection(name, root)
     created = []
     for i, e in enumerate(entries):
-        obj = bpy.data.objects.new("%s_%03d" % (name, i), None)
+        obj = bpy.data.objects.new(f"{name}_{i:03d}", None)
         obj.empty_display_type = display
         obj.empty_display_size = EMPTY_SIZE
         obj.location = convert_pos(e.pos)
