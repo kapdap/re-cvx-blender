@@ -47,7 +47,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
         return None
     mesh.update()
 
-    flats = list(getattr(model, "face_flat", []))
+    flats = list(model.face_flat)
     if len(flats) == len(model.faces) and len(mesh.polygons) == len(model.faces):
         if "sharp_face" in mesh.attributes:
             sharp = mesh.attributes["sharp_face"]
@@ -63,7 +63,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
                 except AttributeError:
                     pass
 
-    normals = getattr(model, "normals", [])
+    normals = model.normals
     if len(normals) == len(model.verts) and model.faces:
         loop_normals = []
         has_source = False

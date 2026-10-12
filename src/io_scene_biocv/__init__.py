@@ -5,6 +5,7 @@ import importlib
 import bpy
 
 from . import handlers, importer, operators, scene
+from .scene import armature as scene_armature
 from .scene import cameras as scene_cameras
 from .scene import collision as scene_collision
 from .scene import common as scene_common
@@ -20,6 +21,7 @@ from .scene import textures as scene_textures
 
 importlib.reload(scene_common)
 importlib.reload(scene_rotation)
+importlib.reload(scene_armature)
 importlib.reload(scene_effects)
 importlib.reload(scene_players)
 importlib.reload(scene_points)

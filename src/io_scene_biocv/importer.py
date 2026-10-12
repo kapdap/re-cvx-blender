@@ -1,4 +1,3 @@
-import logging
 import os
 
 import bpy
@@ -12,8 +11,6 @@ from .scene.models import import_models
 from .scene.players import import_players
 from .scene.points import import_points
 from .scene.textures import TextureRepo
-
-log = logging.getLogger(__name__)
 
 __all__ = [
     "import_file",

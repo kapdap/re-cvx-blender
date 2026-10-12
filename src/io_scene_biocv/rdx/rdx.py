@@ -8,8 +8,6 @@ RDX_MAGIC_2 = 0x41200000  # DC/PS2
 RDX_MAGIC_3 = 0x41A00000  # GameCube
 RDX_MAGICS = (RDX_MAGIC_1, RDX_MAGIC_2, RDX_MAGIC_3, RDX_MAGIC_0)
 
-PRS_FLAG = 0xDF
-
 SIZE_ETTY = 36
 SIZE_EFFECT = 68
 SIZE_ATR = 36
@@ -411,6 +409,7 @@ class ModelTable:
         self.size = 0
         self.blobs = []
         self.blob_tex = []
+        self.skins = []
 
 
 class RdxFile:
@@ -508,6 +507,21 @@ class RdxFile:
             table.size = max(table.size, 0)
             end = min(tp + table.size, len(self.data))
             table.blobs = list(mlb.iter_mlb_blobs(self.data, tp, end, e))
+            if not (end - tp >= 3 and self.data[tp : tp + 3] == b"MDL"):
+                so = tp
+                while so + 4 <= end:
+                    size = struct.unpack_from(e + "i", self.data, so)[0]
+                    if size == -1:
+                        break
+                    if size == 0:
+                        so += 4
+                        continue
+                    if size < 0 or so + 4 + size > end:
+                        break
+                    blob = so + 4
+                    if blob + 4 <= end and self.data[blob : blob + 4] == b"SKIN":
+                        table.skins.append((blob, size))
+                    so += 4 + size
             for bo, _bs in table.blobs:
                 has = False
                 if bo + 16 <= len(self.data):
