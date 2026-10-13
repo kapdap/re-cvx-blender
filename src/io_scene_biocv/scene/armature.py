@@ -102,4 +102,4 @@ def build_armature(name, mlb_data, is_room, placement, collection):
     if placement is not None:
         arm_obj.matrix_world = placement
     bone_names = {o.index: f"NODE_{o.index:03d}" for o in mlb_data.objects}
-    return arm_obj, bone_names, worlds
+    return arm_obj, bone_names, worlds, parent

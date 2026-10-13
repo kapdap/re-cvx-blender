@@ -1,6 +1,6 @@
 import struct
 
-from . import mlb, prs, tex
+from . import mlb, motion, prs, tex
 
 RDX_MAGIC_0 = 0x40028F5C  # Demo
 RDX_MAGIC_1 = 0x40051EB8  # DC/PS2
@@ -410,6 +410,7 @@ class ModelTable:
         self.blobs = []
         self.blob_tex = []
         self.skins = []
+        self.motions = []
 
 
 class RdxFile:
@@ -480,6 +481,7 @@ class RdxFile:
         self.cameras = self._entries(CameraEntry, 0)
         self.lights = self._entries(LightEntry, 1)
         self._read_models()
+        self._read_motions()
         self._read_textures()
 
     def _read_models(self):
@@ -528,6 +530,28 @@ class RdxFile:
                     has = struct.unpack_from(e + "i", self.data, bo + 8)[0] != -1
                 table.blob_tex.append(has)
             self.models.append(table)
+
+    def _read_motions(self):
+        base = self.header.sections[2]
+        if base == 0 or not self.actor:
+            return
+        e = self.endian
+        n = len(self.actor)
+        if base + (n + 3) * 4 > len(self.data):
+            return
+        end = self.header.sections[3] or len(self.data)
+        end = min(end, len(self.data))
+        by_id = {}
+        for k in range(n):
+            v = struct.unpack_from(e + "I", self.data, base + k * 4)[0]
+            if v == 0 or v >= end:
+                continue
+            bins = list(motion.iter_motion_bins(self.data, v, end, e))
+            if bins:
+                by_id.setdefault(self.actor[k].id, bins)
+        for ti, (kind, idx) in self.model_table_map().items():
+            if kind == "actor" and idx is not None:
+                self.models[ti].motions = by_id.get(self.actor[idx].id, [])
 
     def _read_textures(self):
         self.textures = []

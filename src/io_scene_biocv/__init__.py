@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 import importlib
 
 import bpy
 
 from . import handlers, importer, operators, scene
+from .scene import anim as scene_anim
 from .scene import armature as scene_armature
 from .scene import cameras as scene_cameras
 from .scene import collision as scene_collision
@@ -13,6 +12,7 @@ from .scene import effects as scene_effects
 from .scene import lights as scene_lights
 from .scene import mesh as scene_mesh
 from .scene import models as scene_models
+from .scene import motions as scene_motions
 from .scene import placements as scene_placements
 from .scene import players as scene_players
 from .scene import points as scene_points
@@ -22,12 +22,14 @@ from .scene import textures as scene_textures
 importlib.reload(scene_common)
 importlib.reload(scene_rotation)
 importlib.reload(scene_armature)
+importlib.reload(scene_anim)
 importlib.reload(scene_effects)
 importlib.reload(scene_players)
 importlib.reload(scene_points)
 importlib.reload(scene_textures)
 importlib.reload(scene_mesh)
 importlib.reload(scene_models)
+importlib.reload(scene_motions)
 importlib.reload(scene_placements)
 importlib.reload(scene_collision)
 importlib.reload(scene_cameras)

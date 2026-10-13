@@ -8,6 +8,7 @@ from .scene.collision import import_boxes
 from .scene.effects import import_effects
 from .scene.lights import import_lights
 from .scene.models import import_models
+from .scene.motions import import_motions
 from .scene.players import import_players
 from .scene.points import import_points
 from .scene.textures import TextureRepo
@@ -24,6 +25,7 @@ def import_file(
     imp_ene_mdl=True,
     imp_obj_mdl=True,
     imp_itm_mdl=True,
+    imp_ene_mtn=False,
     imp_tex=True,
     imp_cam=True,
     imp_lgt=True,
@@ -61,7 +63,11 @@ def import_file(
     if imp_itm_mdl:
         kinds.add("item")
     if kinds:
-        import_models(stem, rdx, root, tex_repo, tex_assign, kinds=kinds)
+        arms = import_models(stem, rdx, root, tex_repo, tex_assign, kinds=kinds)
+    else:
+        arms = {}
+    if imp_ene_mtn and arms:
+        import_motions(stem, rdx, arms)
     if imp_cam:
         import_cameras(rdx.cameras, root)
     if imp_lgt:
@@ -90,5 +96,4 @@ def import_file(
 
 def _load_world(stem):
     name = f"{stem}WORLD"
-    world = bpy.data.worlds.get(name) or bpy.data.worlds.new(name)
-    return world
+    return bpy.data.worlds.get(name) or bpy.data.worlds.new(name)

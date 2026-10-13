@@ -24,6 +24,7 @@ class ImportOperator(Operator, ImportHelper):
 
     imp_rom_mdl: BoolProperty(name="Room", default=True)
     imp_ene_mdl: BoolProperty(name="Actors", default=True)
+    imp_ene_mtn: BoolProperty(name="Motions", default=False)
     imp_obj_mdl: BoolProperty(name="Objects", default=True)
     imp_itm_mdl: BoolProperty(name="Items", default=True)
     imp_cam: BoolProperty(name="Cameras", default=True)
@@ -45,6 +46,7 @@ class ImportOperator(Operator, ImportHelper):
         box.label(text="Models")
         box.prop(self, "imp_rom_mdl")
         box.prop(self, "imp_ene_mdl")
+        box.prop(self, "imp_ene_mtn")
         box.prop(self, "imp_obj_mdl")
         box.prop(self, "imp_itm_mdl")
         layout.prop(self, "imp_cam")
@@ -70,6 +72,7 @@ class ImportOperator(Operator, ImportHelper):
             filepath,
             imp_rom_mdl=self.imp_rom_mdl,
             imp_ene_mdl=self.imp_ene_mdl,
+            imp_ene_mtn=self.imp_ene_mtn,
             imp_obj_mdl=self.imp_obj_mdl,
             imp_itm_mdl=self.imp_itm_mdl,
             imp_cam=self.imp_cam,
