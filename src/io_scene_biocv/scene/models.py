@@ -1,7 +1,7 @@
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
-from ..rdx import mlb, nj, skin
+from ..rdx import mask, mlb, nj, skin
 from .armature import build_armature
 from .common import EMPTY_SIZE, convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
@@ -9,7 +9,7 @@ from .placements import model_placements
 from .rotation import ninja_euler, set_rotation
 
 
-def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
+def import_models(stem, rdx, root, tex_repo, tex_assign, kinds, apply_motions):
     allowed = {"room", "actor", "obj", "item"} if kinds is None else set(kinds)
     coll = create_collection("MDL", root)
     mesh_cache = {}
@@ -27,6 +27,13 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
         bone_names = {}
         bone_worlds = {}
         skin_weights = {}
+        masks = []
+        if apply_motions:
+            for mo, ms in table.masks:
+                try:
+                    masks.append(mask.parse_mask(rdx.data, mo, ms, rdx.endian))
+                except mask.MaskError as exc:
+                    print(f"RDX: MASK decode failed @{mo:#x}: {exc}")
         for bi, (bo, bs) in enumerate(table.blobs):
             try:
                 mlb_data = mlb.read_mlb(rdx.data, bo, bs, rdx.endian)
@@ -68,6 +75,17 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
                     stiffness[n.index] = ninja_euler(
                         -n.ang[0], -n.ang[1], -n.ang[2]
                     ).to_matrix()
+                face_mask = None
+                face_idx = -1
+                if apply_motions:
+                    for m in masks:
+                        hit = mask.search_object(mlb_data, m.face_id)
+                        if hit is not None:
+                            face_mask, face_idx = m, hit.index
+                            break
+                    if face_mask is not None:
+                        for li, blob in enumerate(rdx.lip_pool):
+                            arm_obj[f"lip_{li:02d}"] = list(blob)
                 for obj in mlb_data.objects:
                     if obj.model_index < 0 or obj.model_index >= len(mlb_data.models):
                         continue
@@ -121,6 +139,35 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds=None):
                                 g.add([vi], 1.0, "REPLACE")
                             except RuntimeError:
                                 pass
+                    if face_mask is not None and obj.index == face_idx:
+                        try:
+                            if mobj.data.shape_keys is None:
+                                mobj.shape_key_add(name="Basis", from_mix=False)
+                            bind = bone_worlds.get(obj.index)
+                            use_weights = weights is not None and len(weights) == len(
+                                model.verts
+                            )
+                            for pi, par in enumerate(face_mask.face):
+                                disp = mask.apply_muscle(model.verts, face_mask, par[0])
+                                kb = mobj.shape_key_add(
+                                    name=f"FM_{pi:02d}", from_mix=False
+                                )
+                                kb.value = 0.0
+                                for vi, ((x, y, z), kd) in enumerate(
+                                    zip(disp, kb.data)
+                                ):
+                                    co = Vector((x, -z, y))
+                                    if bind is not None:
+                                        co = bind @ co
+                                    if use_weights:
+                                        bone, w = weights[vi]
+                                        if w < 1.0:
+                                            c = stiffness.get(bone)
+                                            if c is not None:
+                                                co = (1.0 - w) * (c @ co) + w * co
+                                    kd.co = co
+                        except (RuntimeError, ValueError, IndexError):
+                            pass
                     if obj.hidden:
                         mobj.hide_viewport = True
                         mobj.hide_render = True

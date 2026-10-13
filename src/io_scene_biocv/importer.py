@@ -63,7 +63,7 @@ def import_file(
     if imp_itm_mdl:
         kinds.add("item")
     if kinds:
-        arms = import_models(stem, rdx, root, tex_repo, tex_assign, kinds=kinds)
+        arms = import_models(stem, rdx, root, tex_repo, tex_assign, kinds, imp_ene_mtn)
     else:
         arms = {}
     if imp_ene_mtn and arms:

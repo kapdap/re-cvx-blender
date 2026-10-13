@@ -1,6 +1,6 @@
 import struct
 
-from . import mlb, motion, prs, tex
+from . import mask, mlb, motion, prs, tex
 
 RDX_MAGIC_0 = 0x40028F5C  # Demo
 RDX_MAGIC_1 = 0x40051EB8  # DC/PS2
@@ -410,6 +410,7 @@ class ModelTable:
         self.blobs = []
         self.blob_tex = []
         self.skins = []
+        self.masks = []
         self.motions = []
 
 
@@ -431,6 +432,8 @@ class RdxFile:
         self.lights = []
         self.models = []
         self.textures = []
+        self.mask_pool = []
+        self.lip_pool = []
 
     def read(self, source):
         if isinstance(source, (bytes, bytearray)):
@@ -523,6 +526,8 @@ class RdxFile:
                     blob = so + 4
                     if blob + 4 <= end and self.data[blob : blob + 4] == b"SKIN":
                         table.skins.append((blob, size))
+                    elif blob + 4 <= end and self.data[blob : blob + 4] == b"MASK":
+                        table.masks.append((blob, size))
                     so += 4 + size
             for bo, _bs in table.blobs:
                 has = False
@@ -552,6 +557,16 @@ class RdxFile:
         for ti, (kind, idx) in self.model_table_map().items():
             if kind == "actor" and idx is not None:
                 self.models[ti].motions = by_id.get(self.actor[idx].id, [])
+        for attr, parse, k in (
+            ("mask_pool", mask.parse_mask_pool, n + 1),
+            ("lip_pool", mask.parse_lip_pool, n + 2),
+        ):
+            try:
+                v = struct.unpack_from(e + "I", self.data, base + k * 4)[0]
+                if 0 < v < end:
+                    setattr(self, attr, parse(self.data, v, end, e))
+            except (ValueError, struct.error):
+                pass
 
     def _read_textures(self):
         self.textures = []
