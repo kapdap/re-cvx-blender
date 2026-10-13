@@ -17,7 +17,7 @@ name = "io_scene_biocv"
 readme = "README.md"
 requires-python = ">=3.11"
 urls = {Homepage = "https://github.com/kapdap/re-cvx-blender"}
-version = "0.2.1"
+version = "0.2.2"
 
 [dependency-groups]
 dev = ["commit-and-tag-version>=1.0.1", "ruff>=0.17.0"]
