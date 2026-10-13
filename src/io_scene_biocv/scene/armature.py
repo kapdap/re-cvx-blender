@@ -68,19 +68,6 @@ def build_armature(name, mlb_data, is_room, placement, collection):
     for obj in mlb_data.objects:
         world_of(obj.index)
     heads = {i: worlds[i].to_translation() for i in worlds}
-
-    def aim(i):
-        if i not in parent:
-            return None
-        off = [c for c in children.get(i, []) if (heads[c] - heads[i]).length > 1e-6]
-        if len(off) == 1:
-            return off[0]
-        if len(off) > 1:
-            best = max(off, key=lambda c: (heads[c] - heads[i]).z)
-            if (heads[best] - heads[i]).z > 0:
-                return best
-        return None
-
     prev_active = bpy.context.view_layer.objects.active
     bpy.context.view_layer.objects.active = arm_obj
     bpy.ops.object.mode_set(mode="EDIT")
@@ -88,17 +75,19 @@ def build_armature(name, mlb_data, is_room, placement, collection):
         for obj in mlb_data.objects:
             b = arm.edit_bones.new(f"NODE_{obj.index:03d}")
             b.head = heads[obj.index]
-            target = aim(obj.index)
-            if target is not None:
-                b.tail = heads[target]
+            rot = worlds[obj.index].to_3x3()
+            d = rot @ Vector((0.0, 1.0, 0.0))
+            if d.length < 1e-6:
+                d = Vector((0.0, 0.0, 1.0))
             else:
-                rot = worlds[obj.index].to_3x3()
-                d = rot @ Vector((0.0, 1.0, 0.0))
-                if d.length < 1e-6:
-                    d = Vector((0.0, 0.0, 1.0))
-                else:
-                    d = d.normalized()
-                b.tail = heads[obj.index] + d
+                d = d.normalized()
+            length = 1.0
+            ch = children.get(obj.index, [])
+            if len(ch) == 1 and ch[0] in heads:
+                dist = (heads[ch[0]] - heads[obj.index]).length
+                if dist > 1e-6:
+                    length = max(min(1.0, dist), 0.01)
+            b.tail = heads[obj.index] + d * length
             if obj.hidden:
                 b.hide = True
         for obj in mlb_data.objects:

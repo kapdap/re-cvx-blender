@@ -59,8 +59,11 @@ def _ensure_armature(
                 print(f"RDX: SKIN decode failed @{so:#x}: {exc}")
                 continue
         if parsed:
-            for mno, weights in parsed:
-                skin_weights.setdefault(mno, weights)
+            for node, weights in parsed:
+                if node < len(mlb_data.objects):
+                    mi = mlb_data.objects[node].model_index
+                    if mi >= 0:
+                        skin_weights.setdefault(mi, weights)
         if skin_weights:
             arm_obj, bone_names, bone_worlds, arm_parent = build_armature(
                 f"{node_prefix}_{ti:03d}_ARM",

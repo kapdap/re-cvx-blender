@@ -32,7 +32,6 @@ def parse_skin(data, offset, size, obj_num, endian="<"):
         if flg & 0x2:
             if ii + 1 >= len(ints):
                 raise SkinError("skin mesh header truncated")
-            mno = ints[ii]
             nb = ints[ii + 1]
             ii += 2
             if nb < 0 or nb > 100000:
@@ -49,7 +48,7 @@ def parse_skin(data, offset, size, obj_num, endian="<"):
                 lvl = min(lvl, 9)
                 weights.append((bone, SKIN_LEVELS[lvl]))
             ii += nb
-            meshes.append((mno, weights))
+            meshes.append((node, weights))
         else:
             if ii >= len(ints):
                 raise SkinError("skin influencer truncated")

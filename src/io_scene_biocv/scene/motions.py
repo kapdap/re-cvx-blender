@@ -50,6 +50,6 @@ def import_motions(stem, rdx, table_arms):
             strip.mute = True
             arm_strips.append(strip)
         if arm_strips:
-            arm_strips[-1].mute = False
+            arm_strips[0].mute = False
             arm_obj.animation_data.action = None
     bpy.context.view_layer.update()
