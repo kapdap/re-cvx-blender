@@ -33,7 +33,7 @@ def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False)
     return (texid, False, 1.0, nat)
 
 
-def build_mesh(mesh_key, model, tex_repo, tex_table):
+def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
     mesh_name = f"MDL_{mesh_key}_MESH"
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is not None:
@@ -114,6 +114,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table):
                 transparent,
                 (a if transparent else 1.0),
                 nat,
+                tex_names,
             )
             if mat is not None:
                 mesh.materials.append(mat)

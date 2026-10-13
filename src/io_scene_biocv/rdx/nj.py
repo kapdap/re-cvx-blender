@@ -44,10 +44,7 @@ def _cstr(data, offset, limit=256):
     end = data.find(b"\x00", offset)
     if end < 0 or end - offset > limit:
         return ""
-    try:
-        return data[offset:end].decode("ascii")
-    except UnicodeDecodeError:
-        return ""
+    return data[offset:end].decode("latin-1")
 
 
 def _chunk_head(data, o, endian="<"):
@@ -130,7 +127,7 @@ class NjTexList:
         if o < 0 or o + SIZE_TEXLIST > len(data):
             return self
         tex_ptr, count = struct.unpack_from(endian + "2i", data, o)
-        if count < 0 or count > 4096:
+        if tex_ptr == -1 or not 0 <= count <= 4096:
             return self
         self.present = True
         self.header_offset = o

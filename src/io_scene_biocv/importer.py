@@ -50,9 +50,6 @@ def import_file(
 
     context.scene.world = _load_world(stem)
 
-    tex_repo = TextureRepo(rdx, prefix=stem) if imp_tex else None
-    tex_assign = rdx.texture_assignment()
-
     kinds = set()
     if imp_rom_mdl:
         kinds.add("room")
@@ -62,8 +59,9 @@ def import_file(
         kinds.add("obj")
     if imp_itm_mdl:
         kinds.add("item")
+    tex_repo = TextureRepo(rdx, prefix=stem) if imp_tex and kinds else None
     if kinds:
-        arms = import_models(stem, rdx, root, tex_repo, tex_assign, kinds, imp_ene_mtn)
+        arms = import_models(stem, rdx, root, tex_repo, kinds, imp_ene_mtn)
     else:
         arms = {}
     if imp_ene_mtn and arms:

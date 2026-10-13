@@ -133,18 +133,20 @@ def _skin_point(co, bind, entry, stiffness):
     return co
 
 
-def _cached_mesh(cache, key, model, tex_repo, tex_table):
+def _cached_mesh(cache, key, model, tex_repo, tex_table, tex_names):
     mesh = cache.get(key)
     if mesh is None:
-        mesh = build_mesh(key, model, tex_repo, tex_table)
+        mesh = build_mesh(key, model, tex_repo, tex_table, tex_names)
         cache[key] = mesh
     return mesh
 
 
-def _skinned_mesh(cache, key, model, tex_repo, tex_table, bind, weights, stiffness):
+def _skinned_mesh(
+    cache, key, model, tex_repo, tex_table, bind, weights, stiffness, tex_names
+):
     mesh = cache.get(key)
     if mesh is None:
-        mesh = build_mesh(key, model, tex_repo, tex_table)
+        mesh = build_mesh(key, model, tex_repo, tex_table, tex_names)
         if mesh is not None:
             for vi, v in enumerate(mesh.vertices):
                 entry = weights[vi] if weights is not None else None
@@ -270,6 +272,8 @@ def _import_skinned(
     face_mask, face_idx = _face_target(
         masks, mlb_data, arm_obj, lip_pool, apply_motions
     )
+    tex_table = _tex_table(tex_assign, ti, bi)
+    tex_names = mlb_data.texlist.names
     for obj, model in _iter_meshable(mlb_data):
         weights = _resolve_weights(skin_weights, obj.model_index, len(model.verts))
         key = f"{stem}{ti:03d}_{bi}_{obj.index:03d}_{obj.model_index}"
@@ -278,10 +282,11 @@ def _import_skinned(
             key,
             model,
             tex_repo,
-            _tex_table(tex_assign, ti, bi),
+            tex_table,
             bone_worlds.get(obj.index),
             weights,
             stiffness,
+            tex_names,
         )
         if mesh is None:
             continue
@@ -321,11 +326,11 @@ def _import_static(
     mesh_cache,
 ):
     empties = _build_empties(node_prefix, ti, bi, mlb_data, is_room, xform, tcoll)
+    tex_table = _tex_table(tex_assign, ti, bi)
+    tex_names = mlb_data.texlist.names
     for obj, model in _iter_meshable(mlb_data):
         key = f"{stem}{ti:03d}_{bi}_{obj.model_index}"
-        mesh = _cached_mesh(
-            mesh_cache, key, model, tex_repo, _tex_table(tex_assign, ti, bi)
-        )
+        mesh = _cached_mesh(mesh_cache, key, model, tex_repo, tex_table, tex_names)
         if mesh is None:
             continue
         _new_mesh_object(
@@ -337,7 +342,7 @@ def _import_static(
         )
 
 
-def import_models(stem, rdx, root, tex_repo, tex_assign, kinds, apply_motions):
+def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
     allowed = {"room", "actor", "obj", "item"} if kinds is None else set(kinds)
     coll = create_collection("MDL", root)
     mesh_cache = {}
@@ -345,6 +350,7 @@ def import_models(stem, rdx, root, tex_repo, tex_assign, kinds, apply_motions):
 
     table_types, model_xforms = model_placements(rdx)
     arms = {}
+    tex_assign = rdx.texture_assignment() if tex_repo is not None else {}
     for ti, table in enumerate(rdx.models):
         kind = table_types.get(ti, "room")
         if kind not in allowed:

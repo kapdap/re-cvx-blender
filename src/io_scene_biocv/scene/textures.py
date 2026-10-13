@@ -231,7 +231,16 @@ class TextureRepo:
             self._alpha_kind[key] = kind
         return self._alpha_kind[key]
 
-    def image(self, table_idx, block_idx, pic_idx, variant=None):
+    def _aliased_name(self, alias, table_idx, texid, suffix, used, pool):
+        if not alias:
+            return None
+        name = f"{self.prefix}{alias}{suffix}"
+        existing = pool.get(name)
+        if existing is not None and any(m is existing for m in used.values()):
+            name = f"{self.prefix}{alias}_T{table_idx}_{texid}{suffix}"
+        return name
+
+    def image(self, table_idx, block_idx, pic_idx, variant=None, alias=None):
         key = (table_idx, block_idx, pic_idx, variant)
         img = self.images.get(key)
         if img is not None:
@@ -253,9 +262,17 @@ class TextureRepo:
             raw = bytes(buf)
         if kind != "OPAQUE":
             raw = _bleed_transparent_rgb(raw, pic.width, pic.height)
-        name = f"{self.prefix}TEX_{table_idx}_{block_idx}_{pic_idx}"
-        if variant is not None:
-            name += f"_v{variant}"
+        vsuffix = f"_v{variant}" if variant is not None else ""
+        try:
+            texid = self.table_pics(table_idx).index((block_idx, pic_idx, variant))
+        except ValueError:
+            texid = alias = None
+        name = (
+            self._aliased_name(
+                alias, table_idx, texid, vsuffix, self.images, bpy.data.images
+            )
+            or f"{self.prefix}TEX_{table_idx}_{block_idx}_{pic_idx}{vsuffix}"
+        )
         img = bpy.data.images.get(name)
         if img is None:
             img = bpy.data.images.new(
@@ -283,8 +300,12 @@ class TextureRepo:
         transparent=False,
         alpha=1.0,
         nat=False,
+        tex_names=None,
     ):
-        key = (table_idx, texid, transparent, alpha, nat)
+        alias = None
+        if tex_names is not None and texid is not None and 0 <= texid < len(tex_names):
+            alias = tex_names[texid] or None
+        key = (table_idx, texid, transparent, alpha, nat, alias)
         mat = self.materials.get(key)
         if mat is not None:
             return mat
@@ -294,22 +315,20 @@ class TextureRepo:
             pics = self.table_pics(table_idx)
             if 0 <= texid < len(pics):
                 bi, pi, variant = pics[texid]
-                img = self.image(table_idx, bi, pi, variant)
+                img = self.image(table_idx, bi, pi, variant, alias)
                 kind = self.alpha_kind(table_idx, bi, pi, variant)
             else:
                 print(
                     f"RDX: texid {texid} out of range",
                     flush=True,
                 )
-        if transparent:
-            if nat:
-                name = f"{self.prefix}RDX_{table_idx}_{texid}_TN"
-            else:
-                name = f"{self.prefix}RDX_{table_idx}_{texid}_T"
-        elif nat:
-            name = f"{self.prefix}RDX_{table_idx}_{texid}_N"
-        else:
-            name = f"{self.prefix}RDX_{table_idx}_{texid}"
+        suffix = ("_TN" if nat else "_T") if transparent else ("_N" if nat else "")
+        name = (
+            self._aliased_name(
+                alias, table_idx, texid, suffix, self.materials, bpy.data.materials
+            )
+            or f"{self.prefix}RDX_{table_idx}_{texid}{suffix}"
+        )
         mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
         bsdf = _find_node(mat.node_tree.nodes, "BSDF_PRINCIPLED", "Principled BSDF")
         _make_matte(bsdf)
