@@ -7,7 +7,7 @@ from .anim import build_motion
 def import_motions(stem, rdx, table_arms):
     actions = {}
     for ti, (kind, idx) in rdx.model_table_map().items():
-        if kind != "actor" or idx is None:
+        if kind not in ("actor", "obj", "item") or idx is None:
             continue
         arm = table_arms.get(ti)
         if arm is None:
@@ -17,30 +17,44 @@ def import_motions(stem, rdx, table_arms):
             continue
         for pb in arm_obj.pose.bones:
             pb.rotation_mode = "XYZ"
-        aid = rdx.actor[idx].id
-        nbones = len(bone_names)
+        if kind == "actor":
+            eid = rdx.actor[idx].id
+            prefix = "ACT"
+        elif kind == "obj":
+            eid = rdx.obj[idx].id
+            prefix = "OBJ"
+        else:
+            eid = rdx.item[idx].id
+            prefix = "ITM"
+        skipped = set(range(6, 11)) if kind == "actor" and eid > 90 else set()
+        targets = [i for i in bone_names if i not in skipped]
         arm_strips = []
         for mi, (mo, ms) in enumerate(rdx.models[ti].motions):
-            key = (aid, nbones, mi)
-            action = actions.get(key)
-            if action is None:
+            key = (kind, eid, mi)
+            entry = actions.get(key)
+            if entry is None:
                 try:
                     parsed = motion.parse_mnb(rdx.data, mo, ms, rdx.endian)
                 except motion.MotionError as exc:
                     print(f"RDX: motion decode failed @{mo:#x}: {exc}")
                     continue
-                if parsed[0] != nbones:
+                if parsed[0] > len(targets):
                     continue
-                action = build_motion(
-                    arm_obj,
-                    bone_names,
-                    parent,
-                    objects,
-                    parsed,
-                    f"{stem}ACT_{idx:03d}_{mi:02d}",
+                routing = {bone: t for t, bone in enumerate(targets[: parsed[0]])}
+                entry = (
+                    build_motion(
+                        arm_obj,
+                        bone_names,
+                        parent,
+                        objects,
+                        parsed,
+                        routing,
+                        f"{stem}{prefix}_{idx:03d}_{mi:02d}",
+                    ),
+                    arm_obj.animation_data.action_slot,
                 )
-                actions[key] = (action, arm_obj.animation_data.action_slot)
-            action, slot = actions[key]
+                actions[key] = entry
+            action, slot = entry
             if arm_obj.animation_data is None:
                 arm_obj.animation_data_create()
             track = arm_obj.animation_data.nla_tracks.new()

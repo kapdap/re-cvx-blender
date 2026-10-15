@@ -435,6 +435,7 @@ class RdxFile:
         self.textures = []
         self.mask_pool = []
         self.lip_pool = []
+        self.work_xforms = {}
 
     def read(self, source):
         if isinstance(source, (bytes, bytearray)):
@@ -539,15 +540,29 @@ class RdxFile:
             self.models.append(table)
 
     def _read_motions(self):
+        self._assign_actor_motions()
+        self._read_motion_pools()
+        slots = self._read_room_slots()
+        if slots:
+            refs = self._collect_room_refs()
+            self._assign_room_motions(slots, refs)
+        self._collect_work_xforms()
+
+    def _motion_bounds(self, need):
         base = self.header.sections[2]
         if base == 0 or not self.actor:
-            return
-        e = self.endian
+            return None
         n = len(self.actor)
-        if base + (n + 3) * 4 > len(self.data):
-            return
+        if base + (n + need) * 4 > len(self.data):
+            return None
         end = self.header.sections[3] or len(self.data)
-        end = min(end, len(self.data))
+        return base, self.endian, n, min(end, len(self.data))
+
+    def _assign_actor_motions(self):
+        bounds = self._motion_bounds(3)
+        if bounds is None:
+            return
+        base, e, n, end = bounds
         by_id = {}
         for k in range(n):
             v = struct.unpack_from(e + "I", self.data, base + k * 4)[0]
@@ -559,6 +574,17 @@ class RdxFile:
         for ti, (kind, idx) in self.model_table_map().items():
             if kind == "actor" and idx is not None:
                 self.models[ti].motions = by_id.get(self.actor[idx].id, [])
+
+    def _read_motion_pools(self):
+        base = self.header.sections[2]
+        if base == 0 or not self.actor:
+            return
+        e = self.endian
+        n = len(self.actor)
+        if base + (n + 3) * 4 > len(self.data):
+            return
+        end = self.header.sections[3] or len(self.data)
+        end = min(end, len(self.data))
         for attr, parse, k in (
             ("mask_pool", mask.parse_mask_pool, n + 1),
             ("lip_pool", mask.parse_lip_pool, n + 2),
@@ -569,6 +595,191 @@ class RdxFile:
                     setattr(self, attr, parse(self.data, v, end, e))
             except (ValueError, struct.error):
                 pass
+
+    def _read_room_slots(self):
+        base = self.header.sections[2]
+        if base == 0 or not self.actor:
+            return []
+        e = self.endian
+        n = len(self.actor)
+        if base + (n + 1) * 4 > len(self.data):
+            return []
+        end = self.header.sections[3] or len(self.data)
+        end = min(end, len(self.data))
+        v = struct.unpack_from(e + "I", self.data, base + n * 4)[0]
+        if v == 0 or v >= end:
+            return []
+        slots = []
+        o = v
+        while o + 4 <= end:
+            size = struct.unpack_from(e + "i", self.data, o)[0]
+            if size == -1:
+                break
+            if size == 0:
+                slots.append(None)
+                o += 4
+                continue
+            if size < 0 or o + 4 + size > end:
+                break
+            blob = o + 4
+            if blob + 4 > end or self.data[blob : blob + 3] != b"MTN":
+                break
+            slots.append((blob, size))
+            o += 4 + size
+        return slots
+
+    def _track_script_target(self, cur, op, args):
+        if op == 0x65 and len(args) >= 2:
+            c, r = args[0], args[1]
+            if c == 1:
+                return ("actor", r)
+            if c == 2:
+                return ("obj", r)
+            if c == 3:
+                return ("item", r)
+            return None
+        if op == 0x68 and len(args) >= 2:
+            c, r = args[0], args[1]
+            if c == 1:
+                return ("actor", r)
+            if c == 2:
+                return ("obj", r)
+            return cur
+        return cur
+
+    def _room_slot_at(self, data, o):
+        if o + 1 >= len(data):
+            return None
+        if data[o] != 0x69:
+            return None
+        sub = data[o + 1]
+        if sub == 0x18 and o + 8 <= len(data):
+            return data[o + 4]
+        if sub == 0x22 and o + 10 <= len(data):
+            return data[o + 4]
+        return None
+
+    def _collect_room_refs(self):
+        refs = {}
+        for sc in self.scripts:
+            cur = None
+            o = 0
+            while o < len(sc):
+                b = sc[o]
+                if b == 0x65 and o + 4 <= len(sc):
+                    cur = self._track_script_target(cur, 0x65, sc[o + 1 : o + 4])
+                    o += 4
+                    continue
+                if b == 0x68 and o + 6 <= len(sc):
+                    cur = self._track_script_target(cur, 0x68, sc[o + 1 : o + 6])
+                    o += 6
+                    continue
+                slot = self._room_slot_at(sc, o)
+                if slot is not None and cur is not None:
+                    refs.setdefault(cur, set()).add(slot)
+                    o += 8 if sc[o + 1] == 0x18 else 10
+                    continue
+                o += 1
+        return refs
+
+    def _assign_room_motions(self, slots, refs):
+        table = self.model_table_map()
+        rev = {}
+        for ti, (kind, idx) in table.items():
+            rev.setdefault((kind, idx), []).append(ti)
+        for (kind, idx), wanted in refs.items():
+            for ti in rev.get((kind, idx), []):
+                for s in sorted(wanted):
+                    if (
+                        0 <= s < len(slots)
+                        and slots[s] is not None
+                        and slots[s] not in self.models[ti].motions
+                    ):
+                        self.models[ti].motions.append(slots[s])
+
+    def _collect_work_xforms(self):
+        work = {}
+        seen_pos = set()
+        seen_ang = set()
+        signs = {}
+        for sc in self.scripts:
+            cur = None
+            o = 0
+            while o < len(sc):
+                b = sc[o]
+                if b == 0x65 and o + 4 <= len(sc):
+                    cur = self._track_script_target(cur, 0x65, sc[o + 1 : o + 4])
+                    o += 4
+                    continue
+                if b == 0x68 and o + 6 <= len(sc):
+                    cur = self._track_script_target(cur, 0x68, sc[o + 1 : o + 6])
+                    o += 6
+                    continue
+                if b == 0x69 and o + 1 < len(sc):
+                    sub = sc[o + 1]
+                    if sub == 0x07 and o + 8 <= len(sc) and cur is not None:
+                        if cur not in seen_pos:
+                            x = (
+                                struct.unpack_from(self.endian + "H", sc, o + 2)[0]
+                                / 100.0
+                            )
+                            y = (
+                                struct.unpack_from(self.endian + "H", sc, o + 4)[0]
+                                / 100.0
+                            )
+                            z = (
+                                struct.unpack_from(self.endian + "H", sc, o + 6)[0]
+                                / 100.0
+                            )
+                            if cur not in work:
+                                work[cur] = [[x, y, z], [0, 0, 0]]
+                            else:
+                                work[cur][0] = [x, y, z]
+                            seen_pos.add(cur)
+                        o += 8
+                        continue
+                    if sub == 0x0B and o + 6 <= len(sc) and cur is not None:
+                        if cur not in seen_ang:
+                            if cur not in work:
+                                work[cur] = [[0.0, 0.0, 0.0], [0, 0, 0]]
+                            a0, a1, a2 = sc[o + 2], sc[o + 3], sc[o + 4]
+                            sg = signs.get(cur, ([1, 1, 1], [1, 1, 1]))
+                            work[cur][1] = [
+                                int(a0 * 182.04445) * sg[1][0],
+                                int(a1 * 182.04445) * sg[1][1],
+                                int(a2 * 182.04445) * sg[1][2],
+                            ]
+                            seen_ang.add(cur)
+                        o += 6
+                        continue
+                    if sub in (0x0C, 0x0D) and o + 6 <= len(sc) and cur is not None:
+                        f = sc[o + 2 : o + 6]
+                        s = [1 if v == 0 else -1 for v in f[:3]]
+                        p, q = signs.get(cur, ([1, 1, 1], [1, 1, 1]))
+                        if sub == 0x0C:
+                            p = s
+                        else:
+                            q = s
+                        signs[cur] = (p, q)
+                        if cur in work:
+                            if sub == 0x0C:
+                                work[cur][0] = [
+                                    work[cur][0][i] * p[i] for i in range(3)
+                                ]
+                            else:
+                                work[cur][1] = [
+                                    work[cur][1][i] * q[i] for i in range(3)
+                                ]
+                        o += 6
+                        continue
+                    if sub == 0x18 and o + 8 <= len(sc):
+                        o += 8
+                        continue
+                    if sub == 0x22 and o + 10 <= len(sc):
+                        o += 10
+                        continue
+                o += 1
+        self.work_xforms = {k: (tuple(v[0]), tuple(v[1])) for k, v in work.items()}
 
     def _read_scripts(self):
         self.scripts = []

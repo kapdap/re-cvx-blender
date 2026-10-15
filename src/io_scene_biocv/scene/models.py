@@ -2,11 +2,11 @@ import bpy
 from mathutils import Matrix, Vector
 
 from ..rdx import mask, mlb, nj, skin
-from .armature import build_armature
+from .armature import add_stiff_bones, build_armature
 from .common import EMPTY_SIZE, convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
 from .placements import model_placements
-from .rotation import ninja_euler, set_rotation
+from .rotation import set_rotation
 
 
 def _load_masks(table, rdx):
@@ -114,23 +114,8 @@ def _resolve_weights(skin_weights, model_index, nverts):
     return None
 
 
-def _stiffness_map(mlb_data):
-    return {
-        n.index: ninja_euler(-n.ang[0], -n.ang[1], -n.ang[2]).to_matrix()
-        for n in mlb_data.objects
-    }
-
-
-def _skin_point(co, bind, entry, stiffness):
-    if bind is not None:
-        co = bind @ co
-    if entry is not None:
-        bone, w = entry
-        if w < 1.0:
-            c = stiffness.get(bone)
-            if c is not None:
-                co = (1.0 - w) * (c @ co) + w * co
-    return co
+def _skin_point(co, bind):
+    return bind @ co if bind is not None else co
 
 
 def _cached_mesh(cache, key, model, tex_repo, tex_table, tex_names):
@@ -141,16 +126,13 @@ def _cached_mesh(cache, key, model, tex_repo, tex_table, tex_names):
     return mesh
 
 
-def _skinned_mesh(
-    cache, key, model, tex_repo, tex_table, bind, weights, stiffness, tex_names
-):
+def _skinned_mesh(cache, key, model, tex_repo, tex_table, bind, tex_names):
     mesh = cache.get(key)
     if mesh is None:
         mesh = build_mesh(key, model, tex_repo, tex_table, tex_names)
         if mesh is not None:
             for vi, v in enumerate(mesh.vertices):
-                entry = weights[vi] if weights is not None else None
-                v.co = _skin_point(v.co, bind, entry, stiffness)
+                v.co = _skin_point(v.co, bind)
             mesh.update()
         cache[key] = mesh
     return mesh
@@ -166,25 +148,47 @@ def _new_mesh_object(name, mesh, tcoll, parent, hidden):
     return mobj
 
 
-def _assign_vertex_groups(mobj, weights, bone_names):
+def _assign_vertex_groups(mobj, weights, bone_names, stiff_map, fallback_bone=None):
     groups = {}
-    for vi, (bone, _w) in enumerate(weights):
-        bn = bone_names.get(bone)
-        if bn is None:
-            continue
+
+    def _group(bn):
         g = groups.get(bn)
         if g is None:
             g = mobj.vertex_groups.get(bn)
             if g is None:
                 g = mobj.vertex_groups.new(name=bn)
             groups[bn] = g
+        return g
+
+    if weights is None:
+        if fallback_bone is not None:
+            bn = bone_names.get(fallback_bone)
+            if bn is not None:
+                g = _group(bn)
+                try:
+                    g.add(list(range(len(mobj.data.vertices))), 1.0, "REPLACE")
+                except RuntimeError:
+                    pass
+        return
+    for vi, (bone, w) in enumerate(weights):
+        bn = bone_names.get(bone)
+        if bn is None:
+            continue
         try:
-            g.add([vi], 1.0, "REPLACE")
+            _group(bn).add([vi], w, "REPLACE")
         except RuntimeError:
             pass
+        if w < 1.0:
+            sn = stiff_map.get(bone)
+            if sn is None:
+                continue
+            try:
+                _group(sn).add([vi], 1.0 - w, "REPLACE")
+            except RuntimeError:
+                pass
 
 
-def _add_face_shapes(mobj, model, weights, face_mask, bind, stiffness):
+def _add_face_shapes(mobj, model, face_mask, bind):
     try:
         if mobj.data.shape_keys is None:
             mobj.shape_key_add(name="Basis", from_mix=False)
@@ -193,8 +197,7 @@ def _add_face_shapes(mobj, model, weights, face_mask, bind, stiffness):
             kb = mobj.shape_key_add(name=f"FM_{pi:02d}", from_mix=False)
             kb.value = 0.0
             for vi, ((x, y, z), kd) in enumerate(zip(disp, kb.data)):
-                entry = weights[vi] if weights is not None else None
-                kd.co = _skin_point(Vector((x, -z, y)), bind, entry, stiffness)
+                kd.co = _skin_point(Vector((x, -z, y)), bind)
     except (RuntimeError, ValueError, IndexError):
         pass
 
@@ -262,13 +265,13 @@ def _import_skinned(
     bone_names,
     bone_worlds,
     skin_weights,
+    stiff_map,
     tex_repo,
     tex_assign,
     node_prefix,
     tcoll,
     mesh_cache,
 ):
-    stiffness = _stiffness_map(mlb_data)
     face_mask, face_idx = _face_target(
         masks, mlb_data, arm_obj, lip_pool, apply_motions
     )
@@ -277,15 +280,15 @@ def _import_skinned(
     for obj, model in _iter_meshable(mlb_data):
         weights = _resolve_weights(skin_weights, obj.model_index, len(model.verts))
         key = f"{stem}{ti:03d}_{bi}_{obj.index:03d}_{obj.model_index}"
+        w = bone_worlds.get(obj.index)
+        bind = Matrix.Translation(w.to_translation()) if w is not None else None
         mesh = _skinned_mesh(
             mesh_cache,
             key,
             model,
             tex_repo,
             tex_table,
-            bone_worlds.get(obj.index),
-            weights,
-            stiffness,
+            bind,
             tex_names,
         )
         if mesh is None:
@@ -299,16 +302,13 @@ def _import_skinned(
         )
         mod = mobj.modifiers.new(name="Armature", type="ARMATURE")
         mod.object = arm_obj
-        if weights is not None:
-            _assign_vertex_groups(mobj, weights, bone_names)
+        _assign_vertex_groups(mobj, weights, bone_names, stiff_map, obj.index)
         if face_mask is not None and obj.index == face_idx:
             _add_face_shapes(
                 mobj,
                 model,
-                weights,
                 face_mask,
-                bone_worlds.get(obj.index),
-                stiffness,
+                bind,
             )
 
 
@@ -348,8 +348,9 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
     mesh_cache = {}
     node_prefix = f"{stem}MDL"
 
-    table_types, model_xforms = model_placements(rdx)
+    table_types, model_xforms = model_placements(rdx, apply_motions)
     arms = {}
+    stiff_maps = {}
     tex_assign = rdx.texture_assignment() if tex_repo is not None else {}
     for ti, table in enumerate(rdx.models):
         kind = table_types.get(ti, "room")
@@ -385,6 +386,17 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
             )
 
             if arm_obj is not None:
+                needed = {
+                    b
+                    for weights in skin_weights.values()
+                    for b, w in weights
+                    if w < 1.0
+                }
+                stiff = stiff_maps.setdefault(ti, {})
+                if needed:
+                    stiff.update(
+                        add_stiff_bones(arm_obj, bone_names, needed - set(stiff))
+                    )
                 _import_skinned(
                     stem,
                     ti,
@@ -397,6 +409,7 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
                     bone_names,
                     bone_worlds,
                     skin_weights,
+                    stiff_maps[ti],
                     tex_repo,
                     tex_assign,
                     node_prefix,

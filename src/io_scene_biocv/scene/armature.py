@@ -105,3 +105,37 @@ def build_armature(name, mlb_data, is_room, placement, collection):
         arm_obj.matrix_world = placement
     bone_names = {o.index: f"NODE_{o.index:03d}" for o in mlb_data.objects}
     return arm_obj, bone_names, worlds, parent
+
+
+def add_stiff_bones(arm_obj, bone_names, needed):
+    stiff = {}
+    todo = sorted(i for i in needed if i in bone_names)
+    if not todo:
+        return stiff
+    prev_active = bpy.context.view_layer.objects.active
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    try:
+        for i in todo:
+            if f"STIFF_{i:03d}" in arm_obj.data.edit_bones:
+                stiff[i] = f"STIFF_{i:03d}"
+                continue
+            real = arm_obj.data.edit_bones.get(bone_names[i])
+            if real is None:
+                continue
+            nb = arm_obj.data.edit_bones.new(f"STIFF_{i:03d}")
+            nb.head = real.head
+            nb.tail = real.tail
+            nb.roll = real.roll
+            if real.parent is not None:
+                nb.parent = real.parent
+            nb.use_connect = False
+            stiff[i] = nb.name
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+        bpy.context.view_layer.objects.active = prev_active
+    for bn in stiff.values():
+        b = arm_obj.data.bones.get(bn)
+        if b is not None:
+            b.hide = True
+    return stiff
