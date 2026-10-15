@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.3](v0.2.3) (2026-10-15)
+
+### Bug Fixes
+
+* **textures:** handle missing node tree in 4.2+
+
 ## [0.2.2](v0.2.2) (2026-10-13)
 
 ### Bug Fixes
