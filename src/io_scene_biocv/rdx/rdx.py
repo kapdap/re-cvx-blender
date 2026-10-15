@@ -431,6 +431,7 @@ class RdxFile:
         self.cameras = []
         self.lights = []
         self.models = []
+        self.scripts = []
         self.textures = []
         self.mask_pool = []
         self.lip_pool = []
@@ -483,6 +484,7 @@ class RdxFile:
         self.player = self._entries(PlayerEntry, 9)
         self.cameras = self._entries(CameraEntry, 0)
         self.lights = self._entries(LightEntry, 1)
+        self._read_scripts()
         self._read_models()
         self._read_motions()
         self._read_textures()
@@ -567,6 +569,25 @@ class RdxFile:
                     setattr(self, attr, parse(self.data, v, end, e))
             except (ValueError, struct.error):
                 pass
+
+    def _read_scripts(self):
+        self.scripts = []
+        base = self.header.sections[3]
+        if base == 0 or base + 4 > len(self.data):
+            return
+        ptrs = []
+        o = base
+        while not ptrs or o < ptrs[0]:
+            if o + 4 > len(self.data):
+                break
+            ptrs.append(base + struct.unpack_from(self.endian + "i", self.data, o)[0])
+            o += 4
+        end = min(self.header.sections[4] or len(self.data), len(self.data))
+        for i, ptr in enumerate(ptrs):
+            nxt = ptrs[i + 1] if i + 1 < len(ptrs) else end
+            if nxt < ptr or ptr < 0 or nxt > len(self.data):
+                break
+            self.scripts.append(self.data[ptr:nxt])
 
     def _read_textures(self):
         self.textures = []
