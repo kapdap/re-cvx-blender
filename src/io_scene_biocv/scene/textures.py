@@ -69,6 +69,8 @@ def _set_blend(mat, transparent, cutout=False):
 def _unlink_alpha(mat, bsdf):
     if bsdf is None:
         return None
+    if mat.node_tree is None:
+        return None
     alpha_in = _get(bsdf.inputs, "Alpha")
     if alpha_in is None:
         return None
@@ -171,9 +173,7 @@ class TextureRepo:
             try:
                 pal = None
                 if blk.kind in ("PVR", "GVR"):
-                    _palnum, pli_entries = self.rdx.pli_state_at(
-                        table_idx, block_idx
-                    )
+                    _palnum, pli_entries = self.rdx.pli_state_at(table_idx, block_idx)
                     pal = pli_entries if _palnum > 0 else None
                 self._docs[key] = tex.decode(self.rdx.data, blk.data_offset, pal)
             except (tex.TexError, ValueError):
@@ -237,9 +237,7 @@ class TextureRepo:
             self._alpha_kind[key] = kind
         return self._alpha_kind[key]
 
-    def _aliased_name(
-        self, alias, table_idx, texid, suffix, used, pool, fallback
-    ):
+    def _aliased_name(self, alias, table_idx, texid, suffix, used, pool, fallback):
         if not alias:
             return fallback
         name = f"{self.prefix}{alias}{suffix}"
@@ -300,13 +298,15 @@ class TextureRepo:
             pics = self.table_pics(table_idx)
             if 0 <= texid < len(pics):
                 bi, pi, variant = pics[texid]
-                return self.image(
-                    table_idx, bi, pi, variant, alias
-                ), self.alpha_kind(table_idx, bi, pi, variant)
+                return self.image(table_idx, bi, pi, variant, alias), self.alpha_kind(
+                    table_idx, bi, pi, variant
+                )
             print(f"RDX: texid {texid} out of range", flush=True)
         return None, "OPAQUE"
 
     def _wire_alpha(self, mat, bsdf, tex_node, alpha):
+        if bsdf is None or tex_node is None or mat.node_tree is None:
+            return
         alpha_in = _get(bsdf.inputs, "Alpha")
         alpha_out = _get(tex_node.outputs, "Alpha", 1)
         if alpha_in is not None and alpha_out is not None:
@@ -349,14 +349,17 @@ class TextureRepo:
             f"{self.prefix}RDX_{table_idx}_{texid}{suffix}",
         )
         mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-        bsdf = _bsdf(mat.node_tree.nodes)
+        if not mat.use_nodes:
+            mat.use_nodes = True
+        tree = mat.node_tree
+        bsdf = _bsdf(tree.nodes) if tree is not None else None
         _make_matte(bsdf)
         tex_node = None
-        if img is not None and bsdf is not None:
-            tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        if img is not None and bsdf is not None and tree is not None:
+            tex_node = tree.nodes.new("ShaderNodeTexImage")
             tex_node.image = img
             _safe_link(
-                mat.node_tree.links,
+                tree.links,
                 _get(tex_node.outputs, "Color", 0),
                 _get(bsdf.inputs, "Base Color", 0),
             )
