@@ -91,6 +91,16 @@ def _face_target(masks, mlb_data, arm_obj, lip_pool, apply_motions):
     return None, -1
 
 
+def _rigid_indices(masks, mlb_data):
+    rigid = set()
+    for mk in masks:
+        for oid in list(mk.eye_ids) + [mk.tang_id, mk.tooth_id]:
+            hit = mask.search_object(mlb_data, oid)
+            if hit is not None:
+                rigid.add(hit.index)
+    return rigid
+
+
 def _tex_table(tex_assign, ti, bi):
     return tex_assign.get((ti, bi), tex_assign.get((ti, 0)))
 
@@ -272,10 +282,13 @@ def _import_skinned(
     face_mask, face_idx = _face_target(
         masks, mlb_data, arm_obj, lip_pool, apply_motions
     )
+    rigid = _rigid_indices(masks, mlb_data)
     tex_table = _tex_table(tex_assign, ti, bi)
     tex_names = mlb_data.texlist.names
     for obj, model in _iter_meshable(mlb_data):
         weights = _resolve_weights(skin_weights, obj.model_index, len(model.verts))
+        if weights is None and obj.index in rigid:
+            weights = [(obj.index, 1.0)] * len(model.verts)
         key = f"{stem}{ti:03d}_{bi}_{obj.index:03d}_{obj.model_index}"
         mesh = _skinned_mesh(
             mesh_cache,
@@ -361,7 +374,7 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
         bone_names = {}
         bone_worlds = {}
         skin_weights = {}
-        masks = _load_masks(table, rdx) if apply_motions else []
+        masks = _load_masks(table, rdx)
         for bi, (bo, bs) in enumerate(table.blobs):
             mlb_data = _read_mlb(rdx, bo, bs)
             if mlb_data is None:
