@@ -19,7 +19,7 @@ def import_motions(stem, rdx, table_arms):
             pb.rotation_mode = "XYZ"
         aid = rdx.actor[idx].id
         nbones = len(bone_names)
-        arm_strips = []
+        arm_tracks = []
         for mi, (mo, ms) in enumerate(rdx.models[ti].motions):
             key = (aid, nbones, mi)
             action = actions.get(key)
@@ -45,11 +45,11 @@ def import_motions(stem, rdx, table_arms):
                 arm_obj.animation_data_create()
             track = arm_obj.animation_data.nla_tracks.new()
             track.name = action.name
+            track.mute = True
             strip = track.strips.new(action.name, 1, action)
             strip.action_slot = slot
-            strip.mute = True
-            arm_strips.append(strip)
-        if arm_strips:
-            arm_strips[0].mute = False
+            arm_tracks.append(track)
+        if arm_tracks:
+            arm_tracks[0].mute = False
             arm_obj.animation_data.action = None
     bpy.context.view_layer.update()
