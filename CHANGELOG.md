@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.0](v0.3.0) (2026-10-17)
+
+### Features
+
+* **textures:** add configurable alpha modes
+
+### Bug Fixes
+
+* **motions:** ensure animations playback in exports
+
 ## [0.2.6](v0.2.6) (2026-10-17)
 
 ### Bug Fixes
