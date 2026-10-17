@@ -5,6 +5,7 @@ from .common import convert_pos, create_collection
 
 def _ensure_material(name, color):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    mat.use_nodes = True
     mat.diffuse_color = color
     nodes = mat.node_tree.nodes
     bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)

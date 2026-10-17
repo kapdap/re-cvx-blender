@@ -31,7 +31,7 @@ class ImportOperator(Operator, ImportHelper):
     imp_lgt: BoolProperty(name="Lights", default=True)
     imp_tex: BoolProperty(name="Textures", default=True)
     imp_alpha: EnumProperty(
-        name="Transparency",
+        name="Alpha",
         items=[
             ("BLENDED", "Blended", "Smooth alpha blending"),
             ("DITHERED", "Dithered", "Alpha-tested dithering"),

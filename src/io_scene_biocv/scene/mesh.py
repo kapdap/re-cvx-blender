@@ -110,11 +110,11 @@ def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
             tid, transparent, a, nat = key
             mat = tex_repo.material(
                 tex_table,
+                tex_names,
                 tid,
                 transparent,
                 (a if transparent else 1.0),
                 nat,
-                tex_names,
             )
             if mat is not None:
                 mesh.materials.append(mat)

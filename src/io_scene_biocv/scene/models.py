@@ -91,16 +91,6 @@ def _face_target(masks, mlb_data, arm_obj, lip_pool, apply_motions):
     return None, -1
 
 
-def _rigid_indices(masks, mlb_data):
-    rigid = set()
-    for mk in masks:
-        for oid in list(mk.eye_ids) + [mk.tang_id, mk.tooth_id]:
-            hit = mask.search_object(mlb_data, oid)
-            if hit is not None:
-                rigid.add(hit.index)
-    return rigid
-
-
 def _tex_table(tex_assign, ti, bi):
     return tex_assign.get((ti, bi), tex_assign.get((ti, 0)))
 
@@ -282,7 +272,6 @@ def _import_skinned(
     face_mask, face_idx = _face_target(
         masks, mlb_data, arm_obj, lip_pool, apply_motions
     )
-    rigid = _rigid_indices(masks, mlb_data)
     tex_table = _tex_table(tex_assign, ti, bi)
     tex_names = mlb_data.texlist.names
     for obj, model in _iter_meshable(mlb_data):

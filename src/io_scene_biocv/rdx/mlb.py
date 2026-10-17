@@ -76,7 +76,7 @@ class Mlb:
             model_offs.append(mo)
             self.objects.append(obj)
         uniq = {}
-        for obj, mo in zip(self.objects, model_offs, strict=False):
+        for obj, mo in zip(self.objects, model_offs):
             if mo == -1:
                 continue
             mno = dat_top + mo
