@@ -27,6 +27,7 @@ def import_file(
     imp_itm_mdl=True,
     imp_ene_mtn=False,
     imp_tex=True,
+    imp_alpha="BLENDED",
     imp_cam=True,
     imp_lgt=True,
     imp_ene=True,
@@ -59,7 +60,11 @@ def import_file(
         kinds.add("obj")
     if imp_itm_mdl:
         kinds.add("item")
-    tex_repo = TextureRepo(rdx, prefix=stem) if imp_tex and kinds else None
+    tex_repo = (
+        TextureRepo(rdx, prefix=stem, alpha_mode=imp_alpha)
+        if imp_tex and kinds
+        else None
+    )
     if kinds:
         arms = import_models(stem, rdx, root, tex_repo, kinds, imp_ene_mtn)
     else:

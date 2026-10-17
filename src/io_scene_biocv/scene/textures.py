@@ -157,9 +157,10 @@ def _push_pixels(img, raw, w, h):
 
 
 class TextureRepo:
-    def __init__(self, rdx, prefix=""):
+    def __init__(self, rdx, prefix="", alpha_mode="BLENDED"):
         self.rdx = rdx
         self.prefix = prefix
+        self.alpha_mode = alpha_mode
         self.images = {}
         self.materials = {}
         self._docs = {}
@@ -366,7 +367,8 @@ class TextureRepo:
             )
         if tex_node is not None:
             if transparent and kind != "OPAQUE":
-                _set_blend(mat, True, kind == "CUTOUT" and not nat)
+                cutout = (kind == "CUTOUT" or self.alpha_mode == "DITHERED") and not nat
+                _set_blend(mat, True, cutout)
                 self._wire_alpha(mat, bsdf, tex_node, alpha)
             else:
                 _set_blend(mat, False)

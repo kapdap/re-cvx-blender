@@ -1,7 +1,7 @@
 import os
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
@@ -30,6 +30,14 @@ class ImportOperator(Operator, ImportHelper):
     imp_cam: BoolProperty(name="Cameras", default=True)
     imp_lgt: BoolProperty(name="Lights", default=True)
     imp_tex: BoolProperty(name="Textures", default=True)
+    imp_alpha: EnumProperty(
+        name="Transparency",
+        items=[
+            ("BLENDED", "Blended", "Smooth alpha blending"),
+            ("DITHERED", "Dithered", "Alpha-tested dithering"),
+        ],
+        default="BLENDED",
+    )
     imp_eff: BoolProperty(name="Effects", default=False)
     imp_ply: BoolProperty(name="Player", default=False)
     imp_sca: BoolProperty(name="Collisions", default=False)
@@ -52,6 +60,7 @@ class ImportOperator(Operator, ImportHelper):
         layout.prop(self, "imp_cam")
         layout.prop(self, "imp_lgt")
         layout.prop(self, "imp_tex")
+        layout.prop(self, "imp_alpha")
         box = layout.box()
         box.label(text="Areas")
         box.prop(self, "imp_eff")
@@ -78,6 +87,7 @@ class ImportOperator(Operator, ImportHelper):
             imp_cam=self.imp_cam,
             imp_lgt=self.imp_lgt,
             imp_tex=self.imp_tex,
+            imp_alpha=self.imp_alpha,
             imp_ene=self.imp_ene,
             imp_obj=self.imp_obj,
             imp_itm=self.imp_itm,
