@@ -290,6 +290,7 @@ class TextureRepo:
         _push_pixels(img, raw, pic.width, pic.height)
         img.alpha_mode = "STRAIGHT" if kind != "OPAQUE" else "NONE"
         img.colorspace_settings.name = "sRGB"
+        img.filepath_raw = f"//{name}.png"
         self.images[key] = img
         return img
 
