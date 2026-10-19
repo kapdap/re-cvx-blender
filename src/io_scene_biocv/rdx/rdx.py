@@ -436,6 +436,7 @@ class RdxFile:
         self.lip_pool = []
         self.room_motions = []
         self.room_refs = {}
+        self.object_links = {}
 
     def read(self, source):
         if isinstance(source, (bytes, bytearray)):
@@ -631,6 +632,26 @@ class RdxFile:
                         s = args[2][0]
                         if s in valid:
                             self.room_refs.setdefault(cur, set()).add(s)
+                elif key == "32":
+                    if args[3][0] != 0:
+                        continue
+                    sign = args[4][0]
+                    lox = struct.unpack_from(self.endian + "H", args[5])[0] / 100.0
+                    loy = struct.unpack_from(self.endian + "H", args[6])[0] / 100.0
+                    loz = struct.unpack_from(self.endian + "H", args[7])[0] / 100.0
+                    if sign & 1:
+                        lox = -lox
+                    if sign & 2:
+                        loy = -loy
+                    if sign & 4:
+                        loz = -loz
+                    self.object_links[args[1][0]] = (
+                        args[0][0],
+                        args[2][0],
+                        lox,
+                        loy,
+                        loz,
+                    )
 
     def _read_textures(self):
         self.textures = []

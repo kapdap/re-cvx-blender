@@ -1,9 +1,7 @@
-import struct
-
 import bpy
 from mathutils import Matrix, Vector
 
-from ..rdx import mask, mlb, nj, scd, skin
+from ..rdx import mask, mlb, nj, skin
 from .armature import build_armature
 from .common import convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
@@ -423,50 +421,8 @@ def _import_static(
         )
 
 
-def _room_links(rdx):
-    base = rdx.header.sections[3]
-    end = rdx.header.sections[4] or len(rdx.data)
-    if not base or base >= len(rdx.data):
-        return {}
-    offs = []
-    o = base
-    while True:
-        if o + 4 > len(rdx.data):
-            break
-        v = struct.unpack_from(rdx.endian + "i", rdx.data, o)[0]
-        if v < 0 or base + v >= end or (offs and base + v <= base + offs[-1]):
-            break
-        offs.append(v)
-        o += 4
-        if len(offs) > 512:
-            break
-    out = {}
-    for i, off in enumerate(offs):
-        s = base + off
-        e = base + offs[i + 1] if i + 1 < len(offs) else end
-        try:
-            ops = scd.decode(bytes(rdx.data[s:e]))
-        except ValueError:
-            continue
-        for _, key, args in ops:
-            if key != "32" or args[3][0] != 0:
-                continue
-            sign = args[4][0]
-            lox = struct.unpack_from(rdx.endian + "H", args[5])[0] / 100.0
-            loy = struct.unpack_from(rdx.endian + "H", args[6])[0] / 100.0
-            loz = struct.unpack_from(rdx.endian + "H", args[7])[0] / 100.0
-            if sign & 1:
-                lox = -lox
-            if sign & 2:
-                loy = -loy
-            if sign & 4:
-                loz = -loz
-            out[args[1][0]] = (args[0][0], args[2][0], lox, loy, loz)
-    return out
-
-
 def _apply_object_links(rdx, node_prefix, tbl_map, arms):
-    links = _room_links(rdx)
+    links = rdx.object_links
     if not links:
         return
     act_ti = {}
