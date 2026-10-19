@@ -11,6 +11,7 @@ from .importer import import_file
 class ImportOperator(Operator, ImportHelper):
     bl_idname = "import_scene.rdx"
     bl_label = "Import RDX"
+    bl_description = "Load a RDX file"
     bl_options = {"PRESET", "UNDO"}
 
     filename_ext = ".rdx"
@@ -24,9 +25,26 @@ class ImportOperator(Operator, ImportHelper):
 
     imp_rom_mdl: BoolProperty(name="Room", default=True)
     imp_ene_mdl: BoolProperty(name="Actors", default=True)
-    imp_ene_mtn: BoolProperty(name="Motions", default=False)
     imp_obj_mdl: BoolProperty(name="Objects", default=True)
     imp_itm_mdl: BoolProperty(name="Items", default=True)
+    imp_ene_mtn: BoolProperty(
+        name="Enemy",
+        default=False,
+        description="Per-actor motion sets (walk, idle, attacks)",
+    )
+    imp_rom_mtn: BoolProperty(
+        name="Room",
+        default=False,
+        description="Takes assigned by room scripts (cutscenes, zombies)",
+    )
+    imp_mtn_layout: EnumProperty(
+        name="Layout",
+        items=[
+            ("STRIPS", "Separate strips", "One action per take on muted NLA tracks"),
+            ("SINGLE", "Single animation", "All takes joined end to end in one action"),
+        ],
+        default="STRIPS",
+    )
     imp_cam: BoolProperty(name="Cameras", default=True)
     imp_lgt: BoolProperty(name="Lights", default=True)
     imp_tex: BoolProperty(name="Textures", default=True)
@@ -54,9 +72,13 @@ class ImportOperator(Operator, ImportHelper):
         box.label(text="Models")
         box.prop(self, "imp_rom_mdl")
         box.prop(self, "imp_ene_mdl")
-        box.prop(self, "imp_ene_mtn")
         box.prop(self, "imp_obj_mdl")
         box.prop(self, "imp_itm_mdl")
+        box = layout.box()
+        box.label(text="Motions")
+        box.prop(self, "imp_ene_mtn")
+        box.prop(self, "imp_rom_mtn")
+        box.prop(self, "imp_mtn_layout")
         layout.prop(self, "imp_cam")
         layout.prop(self, "imp_lgt")
         layout.prop(self, "imp_tex")
@@ -81,9 +103,11 @@ class ImportOperator(Operator, ImportHelper):
             filepath,
             imp_rom_mdl=self.imp_rom_mdl,
             imp_ene_mdl=self.imp_ene_mdl,
-            imp_ene_mtn=self.imp_ene_mtn,
             imp_obj_mdl=self.imp_obj_mdl,
             imp_itm_mdl=self.imp_itm_mdl,
+            imp_ene_mtn=self.imp_ene_mtn,
+            imp_rom_mtn=self.imp_rom_mtn,
+            imp_mtn_layout=self.imp_mtn_layout,
             imp_cam=self.imp_cam,
             imp_lgt=self.imp_lgt,
             imp_tex=self.imp_tex,

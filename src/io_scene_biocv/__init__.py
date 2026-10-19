@@ -39,8 +39,7 @@ importlib.reload(importer)
 importlib.reload(operators)
 importlib.reload(handlers)
 
-_classes = [operators.ImportOperator]
-_classes.append(handlers.DragDropFileHandler)
+_classes = [operators.ImportOperator, handlers.DragDropFileHandler]
 
 
 def menu_func(self, context):

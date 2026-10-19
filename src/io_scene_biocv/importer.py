@@ -26,6 +26,8 @@ def import_file(
     imp_obj_mdl=True,
     imp_itm_mdl=True,
     imp_ene_mtn=False,
+    imp_rom_mtn=False,
+    imp_mtn_layout="STRIPS",
     imp_tex=True,
     imp_alpha="BLENDED",
     imp_cam=True,
@@ -50,6 +52,7 @@ def import_file(
     stem = root.name + "_"
 
     context.scene.world = _load_world(stem)
+    context.scene.render.fps = 30
 
     kinds = set()
     if imp_rom_mdl:
@@ -60,23 +63,19 @@ def import_file(
         kinds.add("obj")
     if imp_itm_mdl:
         kinds.add("item")
-    tex_repo = (
-        TextureRepo(rdx, prefix=stem, alpha_mode=imp_alpha)
-        if imp_tex and kinds
-        else None
-    )
+    tex_repo = TextureRepo(rdx, stem, imp_alpha) if imp_tex and kinds else None
     if kinds:
-        arms = import_models(stem, rdx, root, tex_repo, kinds, imp_ene_mtn)
+        arms = import_models(stem, rdx, root, tex_repo, kinds, imp_ene_mtn, imp_rom_mtn)
     else:
         arms = {}
-    if imp_ene_mtn and arms:
-        import_motions(stem, rdx, arms)
+    if (imp_ene_mtn or imp_rom_mtn) and arms:
+        import_motions(stem, rdx, arms, imp_ene_mtn, imp_rom_mtn, imp_mtn_layout)
     if imp_cam:
         import_cameras(rdx.cameras, root)
     if imp_lgt:
         import_lights(rdx.lights, root)
     if imp_ene:
-        import_points("ACT", rdx.actor, root, zero_ax_az=True)
+        import_points("ACT", rdx.actor, root, "PLAIN_AXES", True)
     if imp_obj:
         import_points("OBJ", rdx.obj, root)
     if imp_itm:
@@ -94,6 +93,7 @@ def import_file(
     if imp_evt:
         import_boxes("RUT", rdx.route, root, (0.0, 1.0, 1.0, 1.0))
 
+    bpy.context.view_layer.update()
     return {"FINISHED"}
 
 

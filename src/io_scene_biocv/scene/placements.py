@@ -4,13 +4,13 @@ from .common import convert_pos
 from .rotation import ninja_euler
 
 
-def _xform(entry, yaw_only=False):
+def _xform(entry, yaw_only):
     ang = (0, entry.ang[1], 0) if yaw_only else entry.ang
     eul = ninja_euler(ang[0], ang[1], ang[2])
     return Matrix.Translation(Vector(convert_pos(entry.pos))) @ eul.to_matrix().to_4x4()
 
 
-def model_placements(rdx):
+def model_placements(rdx, rom_mtn):
     tables = {"actor": rdx.actor, "obj": rdx.obj, "item": rdx.item}
     types = {}
     xforms = {}
@@ -18,5 +18,12 @@ def model_placements(rdx):
         types[ti] = kind
         if idx is None:
             continue
-        xforms[ti] = _xform(tables[kind][idx], yaw_only=kind == "actor")
+        if (
+            rom_mtn
+            and kind == "actor"
+            and not rdx.models[ti].motions
+            and rdx.room_motions
+        ):
+            continue
+        xforms[ti] = _xform(tables[kind][idx], kind == "actor")
     return types, xforms

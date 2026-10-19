@@ -37,4 +37,3 @@ def import_lights(entries, root):
             obj.rotation_mode = "XYZ"
             obj.rotation_euler = ninja_euler_sun(ax, ay, az)
         coll.objects.link(obj)
-    bpy.context.view_layer.update()

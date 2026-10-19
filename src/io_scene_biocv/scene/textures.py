@@ -2,6 +2,11 @@ import bpy
 
 from ..rdx import tex
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 _FWD = ((-1, 0, 1), (0, -1, 1), (-1, -1, 2), (1, -1, 2))
 _BWD = ((1, 0, 1), (0, 1, 1), (1, 1, 2), (-1, 1, 2))
 _MATTE = (
@@ -81,12 +86,18 @@ def _push_pixels(img, raw, w, h):
     if len(img.pixels) != w * h * 4:
         return
     rowlen = w * 4
-    flat = [0.0] * (w * h * 4)
-    for row in range(h):
-        src = (h - 1 - row) * rowlen
-        dst = row * rowlen
-        flat[dst : dst + rowlen] = [b / 255.0 for b in raw[src : src + rowlen]]
-    img.pixels = flat
+    if np is not None and len(raw) >= h * rowlen:
+        rows = np.frombuffer(raw, dtype=np.uint8, count=h * rowlen)
+        img.pixels.foreach_set(
+            rows.reshape(h, w, 4)[::-1].reshape(-1).astype(np.float32) / 255.0
+        )
+    else:
+        flat = [0.0] * (w * h * 4)
+        for row in range(h):
+            src = (h - 1 - row) * rowlen
+            dst = row * rowlen
+            flat[dst : dst + rowlen] = [b / 255.0 for b in raw[src : src + rowlen]]
+        img.pixels.foreach_set(flat)
     img.pack()
 
 

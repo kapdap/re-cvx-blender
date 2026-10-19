@@ -3,10 +3,78 @@ from mathutils import Matrix, Vector
 
 from ..rdx import mask, mlb, nj, skin
 from .armature import build_armature
-from .common import EMPTY_SIZE, convert_pos, convert_scale, create_collection
+from .common import convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
 from .placements import model_placements
-from .rotation import ninja_euler, set_rotation
+from .rotation import set_rotation
+
+MORPH_PAIRS = {
+    1: ((0, 1),),
+    2: ((5, 6),),
+    9: ((0, 1),),
+    12: ((0, 1),),
+    14: ((0, 1),),
+    26: ((0, 1),),
+    30: ((0, 1),),
+}
+
+
+def _morph_models(mlb_data):
+    out = {}
+    for o in mlb_data.objects:
+        if 0 <= o.model_index < len(mlb_data.models):
+            m = mlb_data.models[o.model_index]
+            if m is not None and m.faces:
+                out[o.index] = len(m.verts)
+    return out
+
+
+def _morph_verified(src, tgt):
+    if not _skeleton_compatible(src, tgt):
+        return False
+    counts = _morph_models(src)
+    return bool(counts) and counts == _morph_models(tgt)
+
+
+def _skeleton_compatible(src, tgt):
+    if src is None or tgt is None or len(src.objects) != len(tgt.objects):
+        return False
+    return all(
+        a.index == b.index
+        and src.object_index_of(a.child) == tgt.object_index_of(b.child)
+        and src.object_index_of(a.sibling) == tgt.object_index_of(b.sibling)
+        and tuple(a.pos) == tuple(b.pos)
+        and tuple(a.ang) == tuple(b.ang)
+        and a.evalflags == b.evalflags
+        for a, b in zip(src.objects, tgt.objects)
+    )
+
+
+def _apply_morph_key(created, tgt_mlb, worlds, name):
+    if not created or tgt_mlb is None:
+        return
+    tgt_models = {}
+    for o in tgt_mlb.objects:
+        if 0 <= o.model_index < len(tgt_mlb.models):
+            m = tgt_mlb.models[o.model_index]
+            if m is not None and m.faces:
+                tgt_models[o.index] = m
+    for idx, mobj in created.items():
+        tm = tgt_models.get(idx)
+        if tm is None:
+            continue
+        me = mobj.data
+        if len(me.vertices) != len(tm.verts):
+            continue
+        if me.shape_keys is None:
+            mobj.shape_key_add(name="Basis", from_mix=False)
+        kb = me.shape_keys.key_blocks.get(name)
+        if kb is None:
+            kb = mobj.shape_key_add(name=name, from_mix=False)
+        bind = worlds.get(idx)
+        for v, (x, y, z) in zip(me.vertices, tm.verts):
+            kb.data[v.index].co = _skin_point(Vector(convert_pos((x, y, z))), bind)
+        kb.value = 0.0
 
 
 def _load_masks(table, rdx):
@@ -27,56 +95,59 @@ def _read_mlb(rdx, bo, bs):
         return None
 
 
-def _ensure_armature(
-    ti,
-    table,
-    mlb_data,
-    is_room,
-    xform,
-    tcoll,
-    rdx,
-    bo,
-    node_prefix,
-    skin_weights,
-    arms,
-    arm_obj,
-    bone_names,
-    bone_worlds,
-):
-    if is_room or arm_obj is not None:
-        return arm_obj, bone_names, bone_worlds
-    if not table.skins or not mlb_data.objects:
-        return arm_obj, bone_names, bone_worlds
-    try:
-        parsed = None
-        for so, ss in table.skins:
-            try:
-                parsed = skin.parse_skin(
-                    rdx.data, so, ss, len(mlb_data.objects), rdx.endian
-                )
-                break
-            except skin.SkinError as exc:
-                print(f"RDX: SKIN decode failed @{so:#x}: {exc}")
-                continue
-        if parsed:
-            for node, weights in parsed:
-                if node < len(mlb_data.objects):
-                    mi = mlb_data.objects[node].model_index
-                    if mi >= 0:
-                        skin_weights.setdefault(mi, weights)
-        if skin_weights:
-            arm_obj, bone_names, bone_worlds, arm_parent = build_armature(
-                f"{node_prefix}_{ti:03d}_ARM",
-                mlb_data,
-                is_room,
-                xform,
-                tcoll,
+def _skin_entries(table):
+    for entry in table.skins:
+        if len(entry) == 3:
+            yield entry
+        elif len(entry) == 2:
+            so, ss = entry
+            yield (0, so, ss)
+
+
+def _parse_table_skins(rdx, table, mlb_list):
+    per = [{} for _ in mlb_list]
+    for mdl_idx, so, ss in _skin_entries(table):
+        if mdl_idx < 0 or mdl_idx >= len(mlb_list):
+            continue
+        mlb_data = mlb_list[mdl_idx]
+        if mlb_data is None or not mlb_data.objects:
+            continue
+        try:
+            parsed = skin.parse_skin(
+                rdx.data, so, ss, len(mlb_data.objects), rdx.endian
             )
-            arms[ti] = (arm_obj, bone_names, arm_parent, mlb_data.objects)
-    except (ValueError, RuntimeError) as exc:
-        print(f"RDX: armature build failed @{bo:#x}: {exc}")
-        arm_obj = None
-    return arm_obj, bone_names, bone_worlds
+        except skin.SkinError as exc:
+            print(f"RDX: SKIN decode failed @{so:#x}: {exc}")
+            continue
+        for node, weights in parsed:
+            if node < len(mlb_data.objects):
+                mi = mlb_data.objects[node].model_index
+                if mi >= 0:
+                    per[mdl_idx].setdefault(mi, weights)
+    return per
+
+
+def _stiff_set(weights_dict):
+    out = set()
+    for weights in weights_dict.values():
+        for bone, w in weights:
+            if w < 1.0:
+                out.add(bone)
+    return out
+
+
+def _display_score(mlb_data):
+    if mlb_data is None:
+        return (-1, -1, -1)
+    faces = 0
+    meshable = 0
+    for o in mlb_data.objects:
+        if 0 <= o.model_index < len(mlb_data.models):
+            m = mlb_data.models[o.model_index]
+            if m is not None and m.faces:
+                faces += len(m.faces)
+                meshable += 1
+    return (faces, meshable, len(mlb_data.objects))
 
 
 def _face_target(masks, mlb_data, arm_obj, lip_pool, apply_motions):
@@ -114,43 +185,19 @@ def _resolve_weights(skin_weights, model_index, nverts):
     return None
 
 
-def _stiffness_map(mlb_data):
-    return {
-        n.index: ninja_euler(-n.ang[0], -n.ang[1], -n.ang[2]).to_matrix()
-        for n in mlb_data.objects
-    }
-
-
-def _skin_point(co, bind, entry, stiffness):
+def _skin_point(co, bind):
     if bind is not None:
         co = bind @ co
-    if entry is not None:
-        bone, w = entry
-        if w < 1.0:
-            c = stiffness.get(bone)
-            if c is not None:
-                co = (1.0 - w) * (c @ co) + w * co
     return co
 
 
-def _cached_mesh(cache, key, model, tex_repo, tex_table, tex_names):
+def _get_mesh(cache, key, mesh_name, model, tex_repo, tex_table, tex_names, bind=None):
     mesh = cache.get(key)
     if mesh is None:
-        mesh = build_mesh(key, model, tex_repo, tex_table, tex_names)
-        cache[key] = mesh
-    return mesh
-
-
-def _skinned_mesh(
-    cache, key, model, tex_repo, tex_table, bind, weights, stiffness, tex_names
-):
-    mesh = cache.get(key)
-    if mesh is None:
-        mesh = build_mesh(key, model, tex_repo, tex_table, tex_names)
-        if mesh is not None:
-            for vi, v in enumerate(mesh.vertices):
-                entry = weights[vi] if weights is not None else None
-                v.co = _skin_point(v.co, bind, entry, stiffness)
+        mesh = build_mesh(mesh_name, model, tex_repo, tex_table, tex_names)
+        if mesh is not None and bind is not None:
+            for v in mesh.vertices:
+                v.co = _skin_point(v.co, bind)
             mesh.update()
         cache[key] = mesh
     return mesh
@@ -168,23 +215,39 @@ def _new_mesh_object(name, mesh, tcoll, parent, hidden):
 
 def _assign_vertex_groups(mobj, weights, bone_names):
     groups = {}
-    for vi, (bone, _w) in enumerate(weights):
+
+    def _group(name):
+        g = groups.get(name)
+        if g is None:
+            g = mobj.vertex_groups.get(name)
+            if g is None:
+                g = mobj.vertex_groups.new(name=name)
+            groups[name] = g
+        return g
+
+    def _stiff_name(bn):
+        if bn.startswith("NODE_"):
+            return bn.replace("NODE_", "STIFF_", 1)
+        return f"STIFF_{bn}"
+
+    batched = {}
+    for vi, (bone, w) in enumerate(weights):
         bn = bone_names.get(bone)
         if bn is None:
             continue
-        g = groups.get(bn)
-        if g is None:
-            g = mobj.vertex_groups.get(bn)
-            if g is None:
-                g = mobj.vertex_groups.new(name=bn)
-            groups[bn] = g
+        if w >= 0.999:
+            batched.setdefault((bn, 1.0), []).append(vi)
+        else:
+            batched.setdefault((bn, w), []).append(vi)
+            batched.setdefault((_stiff_name(bn), 1.0 - w), []).append(vi)
+    for (name, w), idxs in batched.items():
         try:
-            g.add([vi], 1.0, "REPLACE")
+            _group(name).add(idxs, w, "REPLACE")
         except RuntimeError:
             pass
 
 
-def _add_face_shapes(mobj, model, weights, face_mask, bind, stiffness):
+def _add_face_shapes(mobj, model, face_mask, bind):
     try:
         if mobj.data.shape_keys is None:
             mobj.shape_key_add(name="Basis", from_mix=False)
@@ -193,8 +256,7 @@ def _add_face_shapes(mobj, model, weights, face_mask, bind, stiffness):
             kb = mobj.shape_key_add(name=f"FM_{pi:02d}", from_mix=False)
             kb.value = 0.0
             for vi, ((x, y, z), kd) in enumerate(zip(disp, kb.data)):
-                entry = weights[vi] if weights is not None else None
-                kd.co = _skin_point(Vector((x, -z, y)), bind, entry, stiffness)
+                kd.co = _skin_point(Vector((x, -z, y)), bind)
     except (RuntimeError, ValueError, IndexError):
         pass
 
@@ -206,7 +268,7 @@ def _build_empties(node_prefix, ti, bi, mlb_data, is_room, xform, tcoll):
             f"{node_prefix}_{ti:03d}_{bi}_NODE_{obj.index:03d}", None
         )
         emp.empty_display_type = "PLAIN_AXES"
-        emp.empty_display_size = EMPTY_SIZE * 0.5
+        emp.empty_display_size = 2.5
         evalf = obj.evalflags
         if is_room:
             if evalf & 0x1:
@@ -216,7 +278,7 @@ def _build_empties(node_prefix, ti, bi, mlb_data, is_room, xform, tcoll):
             ax, ay, az = obj.ang
             if evalf & 0x2:
                 ax = ay = az = 0
-            set_rotation(emp, ax, ay, az, zxy=bool(evalf & 0x20))
+            set_rotation(emp, ax, ay, az, False, bool(evalf & 0x20))
             scl = obj.scl if not (evalf & 0x4) else (1.0, 1.0, 1.0)
             emp.scale = convert_scale(scl)
         else:
@@ -268,50 +330,57 @@ def _import_skinned(
     tcoll,
     mesh_cache,
 ):
-    stiffness = _stiffness_map(mlb_data)
     face_mask, face_idx = _face_target(
         masks, mlb_data, arm_obj, lip_pool, apply_motions
     )
     tex_table = _tex_table(tex_assign, ti, bi)
     tex_names = mlb_data.texlist.names
+    created = {}
     for obj, model in _iter_meshable(mlb_data):
         weights = _resolve_weights(skin_weights, obj.model_index, len(model.verts))
         if weights is None and obj.index in bone_names:
             weights = [(obj.index, 1.0)] * len(model.verts)
         key = f"{stem}{ti:03d}_{bi}_{obj.index:03d}_{obj.model_index}"
-        mesh = _skinned_mesh(
+        mesh_name = f"{node_prefix}_{ti:03d}_{bi}_{obj.index:03d}"
+        mesh = _get_mesh(
             mesh_cache,
             key,
+            mesh_name,
             model,
             tex_repo,
             tex_table,
-            bone_worlds.get(obj.index),
-            weights,
-            stiffness,
             tex_names,
+            bone_worlds.get(obj.index),
         )
         if mesh is None:
             continue
         mobj = _new_mesh_object(
-            f"{node_prefix}_{ti:03d}_{bi}_{obj.index:03d}",
+            mesh_name,
             mesh,
             tcoll,
             arm_obj,
             obj.hidden,
         )
+        created[obj.index] = mobj
         mod = mobj.modifiers.new(name="Armature", type="ARMATURE")
         mod.object = arm_obj
         if weights is not None:
             _assign_vertex_groups(mobj, weights, bone_names)
+        if len(mobj.vertex_groups) == 0 and bone_names:
+            fallback = next(iter(bone_names.values()))
+            g = mobj.vertex_groups.new(name=fallback)
+            try:
+                g.add(list(range(len(model.verts))), 1.0, "REPLACE")
+            except RuntimeError:
+                pass
         if face_mask is not None and obj.index == face_idx:
             _add_face_shapes(
                 mobj,
                 model,
-                weights,
                 face_mask,
                 bone_worlds.get(obj.index),
-                stiffness,
             )
+    return created
 
 
 def _import_static(
@@ -332,7 +401,15 @@ def _import_static(
     tex_names = mlb_data.texlist.names
     for obj, model in _iter_meshable(mlb_data):
         key = f"{stem}{ti:03d}_{bi}_{obj.model_index}"
-        mesh = _cached_mesh(mesh_cache, key, model, tex_repo, tex_table, tex_names)
+        mesh = _get_mesh(
+            mesh_cache,
+            key,
+            f"{node_prefix}_{ti:03d}_{bi}_{obj.model_index}",
+            model,
+            tex_repo,
+            tex_table,
+            tex_names,
+        )
         if mesh is None:
             continue
         _new_mesh_object(
@@ -344,50 +421,114 @@ def _import_static(
         )
 
 
-def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
+def import_models(stem, rdx, root, tex_repo, kinds, apply_motions, rom_mtn):
     allowed = {"room", "actor", "obj", "item"} if kinds is None else set(kinds)
     coll = create_collection("MDL", root)
     mesh_cache = {}
     node_prefix = f"{stem}MDL"
 
-    table_types, model_xforms = model_placements(rdx)
+    table_types, model_xforms = model_placements(rdx, rom_mtn)
+    tbl_map = rdx.model_table_map()
     arms = {}
     tex_assign = rdx.texture_assignment() if tex_repo is not None else {}
     for ti, table in enumerate(rdx.models):
         kind = table_types.get(ti, "room")
         if kind not in allowed:
             continue
+        actor_id = None
+        entry = tbl_map.get(ti)
+        if (
+            entry is not None
+            and entry[0] == "actor"
+            and entry[1] is not None
+            and 0 <= entry[1] < len(rdx.actor)
+        ):
+            actor_id = rdx.actor[entry[1]].id
         tcoll = create_collection(f"MDL_{ti:03d}", coll)
         is_room = kind == "room"
+        masks = _load_masks(table, rdx)
+        xform = model_xforms.get(ti)
+        mlb_list = []
+        for bo, bs in table.blobs:
+            mlb_list.append(_read_mlb(rdx, bo, bs))
+        if is_room or not mlb_list or all(m is None for m in mlb_list):
+            for bi, mlb_data in enumerate(mlb_list):
+                if mlb_data is None:
+                    continue
+                _import_static(
+                    stem,
+                    ti,
+                    bi,
+                    mlb_data,
+                    is_room,
+                    xform,
+                    tex_repo,
+                    tex_assign,
+                    node_prefix,
+                    tcoll,
+                    mesh_cache,
+                )
+            continue
+        per = _parse_table_skins(rdx, table, mlb_list)
+        rig_bi = -1
+        best = (-1, -1, -1)
+        for bi, mlb_data in enumerate(mlb_list):
+            key = _display_score(mlb_data) if mlb_data is not None else (-1, -1, -1)
+            if key > best:
+                best = key
+                rig_bi = bi
+        if rig_bi < 0 or mlb_list[rig_bi] is None or not mlb_list[rig_bi].objects:
+            for bi, mlb_data in enumerate(mlb_list):
+                if mlb_data is None:
+                    continue
+                _import_static(
+                    stem,
+                    ti,
+                    bi,
+                    mlb_data,
+                    is_room,
+                    xform,
+                    tex_repo,
+                    tex_assign,
+                    node_prefix,
+                    tcoll,
+                    mesh_cache,
+                )
+            continue
+        rig_weights = per[rig_bi] if rig_bi < len(per) else {}
         arm_obj = None
         bone_names = {}
         bone_worlds = {}
-        skin_weights = {}
-        masks = _load_masks(table, rdx)
-        for bi, (bo, bs) in enumerate(table.blobs):
-            mlb_data = _read_mlb(rdx, bo, bs)
+        if rig_weights or kind == "actor":
+            try:
+                arm_obj, bone_names, bone_worlds, arm_parent = build_armature(
+                    f"{node_prefix}_{ti:03d}",
+                    mlb_list[rig_bi],
+                    is_room,
+                    xform,
+                    tcoll,
+                    _stiff_set(rig_weights),
+                )
+                arms[ti] = (arm_obj, bone_names, arm_parent, mlb_list[rig_bi].objects)
+            except (ValueError, RuntimeError) as exc:
+                print(f"RDX: armature build failed @{table.blobs[rig_bi][0]:#x}: {exc}")
+                arm_obj = None
+        pairs = []
+        for s, t in MORPH_PAIRS.get(actor_id, ()):
+            if (
+                0 <= s < len(mlb_list)
+                and 0 <= t < len(mlb_list)
+                and _morph_verified(mlb_list[s], mlb_list[t])
+            ):
+                pairs.append((s, t))
+        morph_src_map = dict(pairs)
+        morph_tgt_set = {t for _, t in pairs}
+        for bi, mlb_data in enumerate(mlb_list):
             if mlb_data is None:
                 continue
-
-            arm_obj, bone_names, bone_worlds = _ensure_armature(
-                ti,
-                table,
-                mlb_data,
-                is_room,
-                model_xforms.get(ti),
-                tcoll,
-                rdx,
-                bo,
-                node_prefix,
-                skin_weights,
-                arms,
-                arm_obj,
-                bone_names,
-                bone_worlds,
-            )
-
-            if arm_obj is not None:
-                _import_skinned(
+            worlds = None
+            if bi == rig_bi and arm_obj is not None:
+                created = _import_skinned(
                     stem,
                     ti,
                     bi,
@@ -398,7 +539,71 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
                     arm_obj,
                     bone_names,
                     bone_worlds,
-                    skin_weights,
+                    rig_weights,
+                    tex_repo,
+                    tex_assign,
+                    node_prefix,
+                    tcoll,
+                    mesh_cache,
+                )
+                worlds = bone_worlds
+            elif arm_obj is not None:
+                if _skeleton_compatible(mlb_list[rig_bi], mlb_data):
+                    own_w = per[bi] if bi < len(per) and per[bi] else rig_weights
+                    arm, names, arm_worlds = arm_obj, bone_names, bone_worlds
+                    hide = False
+                else:
+                    if not [*_iter_meshable(mlb_data)]:
+                        continue
+                    own_w = per[bi] if bi < len(per) else {}
+                    try:
+                        var_arm, var_names, var_worlds, _ = build_armature(
+                            f"{node_prefix}_{ti:03d}_{bi}",
+                            mlb_data,
+                            is_room,
+                            xform,
+                            tcoll,
+                            _stiff_set(own_w),
+                        )
+                    except (ValueError, RuntimeError) as exc:
+                        print(
+                            f"RDX: variant armature build failed @{table.blobs[bi][0]:#x}: {exc}"
+                        )
+                        continue
+                    arm, names, arm_worlds = var_arm, var_names, var_worlds
+                    hide = True
+                created = _import_skinned(
+                    stem,
+                    ti,
+                    bi,
+                    mlb_data,
+                    masks,
+                    rdx.lip_pool,
+                    apply_motions,
+                    arm,
+                    names,
+                    arm_worlds,
+                    own_w,
+                    tex_repo,
+                    tex_assign,
+                    node_prefix,
+                    tcoll,
+                    mesh_cache,
+                )
+                if hide:
+                    for mobj in (arm, *created.values()):
+                        mobj.hide_viewport = True
+                        mobj.hide_render = True
+                    continue
+                worlds = arm_worlds
+            else:
+                _import_static(
+                    stem,
+                    ti,
+                    bi,
+                    mlb_data,
+                    is_room,
+                    xform,
                     tex_repo,
                     tex_assign,
                     node_prefix,
@@ -406,19 +611,11 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions):
                     mesh_cache,
                 )
                 continue
-
-            _import_static(
-                stem,
-                ti,
-                bi,
-                mlb_data,
-                is_room,
-                model_xforms.get(ti),
-                tex_repo,
-                tex_assign,
-                node_prefix,
-                tcoll,
-                mesh_cache,
-            )
-    bpy.context.view_layer.update()
+            tgt = morph_src_map.get(bi)
+            if tgt is not None and worlds is not None:
+                _apply_morph_key(created, mlb_list[tgt], worlds, f"MORPH_{tgt}")
+            if bi in morph_tgt_set:
+                for mobj in created.values():
+                    mobj.hide_viewport = True
+                    mobj.hide_render = True
     return arms

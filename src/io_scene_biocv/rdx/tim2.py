@@ -9,6 +9,12 @@ CT_RGBA32 = 3
 CT_INDEXED4 = 4
 CT_INDEXED8 = 5
 
+_LUT5 = bytes((v * 255) // 31 for v in range(32))
+_ALPHA_4TO8 = bytes(v | (v >> 4) for v in range(256))
+_ALPHA_HALF = bytes((v + 1) >> 1 for v in range(256))
+_ALPHA_DOUBLE = bytes(min(v * 2, 255) for v in range(256))
+_ALPHA_KIND = bytes(0 if v == 0 else (1 if v == 255 else 2) for v in range(256))
+
 
 class Tim2Error(ValueError):
     pass
@@ -183,21 +189,10 @@ def apply_pal_sub(image_type, image_data, pixels, pal_colors):
 def classify_alpha(pixels):
     if not pixels:
         return "OPAQUE"
-    seen_zero = False
-    seen_full = False
-    seen_mid = False
-    for i in range(3, len(pixels), 4):
-        a = pixels[i]
-        if a == 0:
-            seen_zero = True
-        elif a == 255:
-            seen_full = True
-        else:
-            seen_mid = True
-            break
-    if seen_mid:
+    kinds = pixels[3::4].translate(_ALPHA_KIND)
+    if 2 in kinds:
         return "BLEND"
-    if seen_zero and seen_full:
+    if 0 in kinds and 1 in kinds:
         return "CUTOUT"
     return "OPAQUE"
 
@@ -259,109 +254,70 @@ def _rgba32_to_rgba(inp, out, pixels):
 
 
 def _rgb32_to_rgba(inp, out, pixels):
-    for i in range(pixels):
-        s = i * 4
-        out[s] = inp[s]
-        out[s + 1] = inp[s + 1]
-        out[s + 2] = inp[s + 2]
-        out[s + 3] = 255
+    n = pixels * 4
+    if len(inp) < n:
+        raise IndexError("image data too short")
+    out[0:n:4] = inp[0:n:4]
+    out[1:n:4] = inp[1:n:4]
+    out[2:n:4] = inp[2:n:4]
+    out[3:n:4] = b"\xff" * pixels
 
 
 def _rgba16_to_rgba(inp, out, pixels, texa=0):
     aem = (texa >> 15) & 1
-    ta0 = texa & 0xFF
-    ta1 = (texa >> 16) & 0xFF
+    a_full = 255 if not aem else min(255, ((texa >> 16) & 0xFF) * 2)
+    a_zero = 0 if not aem else min(255, (texa & 0xFF) * 2)
     for i in range(pixels):
         s = i * 2
         v = inp[s] | (inp[s + 1] << 8)
-        r = (v & 0x1F) * 255 // 31
-        g = ((v >> 5) & 0x1F) * 255 // 31
-        b = ((v >> 10) & 0x1F) * 255 // 31
-        if v & 0x8000:
-            a = 255 if not aem else (min(255, ta1 * 2))
-        else:
-            a = 0 if not aem else (min(255, ta0 * 2))
         d = i * 4
-        out[d] = r
-        out[d + 1] = g
-        out[d + 2] = b
-        out[d + 3] = a
+        out[d] = _LUT5[v & 0x1F]
+        out[d + 1] = _LUT5[(v >> 5) & 0x1F]
+        out[d + 2] = _LUT5[(v >> 10) & 0x1F]
+        out[d + 3] = a_full if v & 0x8000 else a_zero
 
 
 def _indexed8_to_rgba(inp, clut, out, pixels):
     if clut is None or inp is None:
         return
-    for i in range(pixels):
-        if i >= len(inp):
-            break
-        ci = inp[i] * 4
-        d = i * 4
-        if ci < len(clut) - 3:
-            out[d] = clut[ci]
-            out[d + 1] = clut[ci + 1]
-            out[d + 2] = clut[ci + 2]
-            out[d + 3] = clut[ci + 3]
+    lim = len(clut) - 3
+    lut = [
+        clut[b : b + 4] if b < lim else b"\x00\x00\x00\x00" for b in range(0, 1024, 4)
+    ]
+    n = min(len(inp), pixels)
+    out[0 : n * 4] = b"".join(map(lut.__getitem__, inp[:n]))
 
 
 def _indexed4_to_rgba(inp, clut, out, pixels):
     if clut is None or inp is None:
         return
-    for i in range(pixels):
-        bi = i // 2
-        if bi >= len(inp):
-            break
-        byte = inp[bi]
-        shift = 0 if (i % 2) == 0 else 4
-        ci = ((byte >> shift) & 0x0F) * 4
-        d = i * 4
-        if ci < len(clut) - 3:
-            out[d] = clut[ci]
-            out[d + 1] = clut[ci + 1]
-            out[d + 2] = clut[ci + 2]
-            out[d + 3] = clut[ci + 3]
+    lim = len(clut) - 3
+    lut = [clut[b : b + 4] if b < lim else b"\x00\x00\x00\x00" for b in range(0, 64, 4)]
+    pair = [lut[v & 0x0F] + lut[v >> 4] for v in range(256)]
+    n = min(len(inp) * 2, pixels)
+    out[0 : n * 4] = b"".join(map(pair.__getitem__, inp[: (n + 1) // 2]))[: n * 4]
+
+
+def _alpha_is_000(buf):
+    r = buf[0::4]
+    g = buf[1::4]
+    b = buf[2::4]
+    buf[3::4] = bytes(a if (x | y | z) else 0 for x, y, z, a in zip(r, g, b, buf[3::4]))
 
 
 def _normalize_indexed_alpha(pixels, image_type, org_color_type, pict_format):
-    if image_type not in (CT_INDEXED4, CT_INDEXED8):
+    if (
+        image_type not in (CT_INDEXED4, CT_INDEXED8)
+        or org_color_type not in (0, 1, 2, 6)
+        or not pixels
+    ):
         return pixels
-    if org_color_type not in (0, 1, 2, 6):
-        return pixels
-    if not pixels:
-        return pixels
-    vq = is_vq_path(pict_format if pict_format is not None else -1)
     buf = bytearray(pixels)
-
-    def alpha_is_000():
-        for i in range(0, len(buf), 4):
-            if buf[i + 3] != 0 and buf[i] == 0 and buf[i + 1] == 0 and buf[i + 2] == 0:
-                buf[i + 3] = 0
-
-    def alpha_4to8():
-        for i in range(3, len(buf), 4):
-            v = buf[i]
-            buf[i] = v | (v >> 4)
-
-    def alpha_is_half():
-        for i in range(3, len(buf), 4):
-            buf[i] = (buf[i] + 1) >> 1
-
-    if vq:
-        if org_color_type == 2:
-            alpha_4to8()
-            alpha_is_half()
-        elif org_color_type == 6:
-            alpha_is_half()
-    else:
-        if org_color_type in (0, 1):
-            alpha_is_000()
-        elif org_color_type == 2:
-            alpha_is_000()
-            alpha_4to8()
-            alpha_is_half()
-        elif org_color_type == 6:
-            alpha_is_000()
-            alpha_is_half()
-    for i in range(3, len(buf), 4):
-        v = buf[i] * 2
-        buf[i] = min(v, 255)
+    if not is_vq_path(pict_format if pict_format is not None else -1):
+        _alpha_is_000(buf)
+    if org_color_type == 2:
+        buf[3::4] = buf[3::4].translate(_ALPHA_4TO8).translate(_ALPHA_HALF)
+    elif org_color_type == 6:
+        buf[3::4] = buf[3::4].translate(_ALPHA_HALF)
+    buf[3::4] = buf[3::4].translate(_ALPHA_DOUBLE)
     return bytes(buf)

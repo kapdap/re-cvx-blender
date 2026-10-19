@@ -14,6 +14,5 @@ def import_cameras(entries, root):
             obj = bpy.data.objects.new(f"CAM_{i:03d}_{b}", data)
             obj.location = convert_pos(blk.pos)
             ax, ay, az = blk.ang
-            set_rotation(obj, ax, ay, az, camera=True)
+            set_rotation(obj, ax, ay, az, True)
             coll.objects.link(obj)
-    bpy.context.view_layer.update()

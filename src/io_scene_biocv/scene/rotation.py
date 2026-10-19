@@ -4,6 +4,9 @@ from mathutils import Matrix
 
 TAU = math.pi * 2.0
 
+_COS = [math.cos(i * TAU / 65536.0) for i in range(65536)]
+_SIN = [math.sin(i * TAU / 65536.0) for i in range(65536)]
+
 
 def _rx(a):
     c, s = math.cos(a), math.sin(a)
@@ -36,14 +39,32 @@ def _ninja_rad(angle):
 
 
 def ninja_euler(ax, ay, az, zxy=False):
-    rax, ray, raz = _ninja_rad(ax), _ninja_rad(ay), _ninja_rad(az)
     if zxy:
+        rax, ray, raz = _ninja_rad(ax), _ninja_rad(ay), _ninja_rad(az)
         rg = _mmul(_ry(ray), _mmul(_rx(rax), _rz(raz)))
-    else:
-        rg = _mmul(_mmul(_rz(raz), _ry(ray)), _rx(rax))
-    p = ((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0))
-    pt = ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0))
-    m = _mmul(_mmul(p, rg), pt)
+        p = ((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0))
+        pt = ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0))
+        return _mat_to_euler(_mmul(_mmul(p, rg), pt))
+    ix = int(ax) & 0xFFFF
+    iy = int(ay) & 0xFFFF
+    iz = int(az) & 0xFFFF
+    cx = _COS[ix]
+    sx = _SIN[ix]
+    cy = _COS[iy]
+    sy = _SIN[iy]
+    cz = _COS[iz]
+    sz = _SIN[iz]
+    a02 = cz * sy
+    a12 = sz * sy
+    r01 = -sz * cx + a02 * sx
+    r02 = sz * sx + a02 * cx
+    r11 = cz * cx + a12 * sx
+    r12 = -cz * sx + a12 * cx
+    m = (
+        (cz * cy, -r02, r01),
+        (sy, cy * cx, -cy * sx),
+        (sz * cy, -r12, r11),
+    )
     return _mat_to_euler(m)
 
 

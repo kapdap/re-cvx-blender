@@ -5,22 +5,35 @@ class MotionError(ValueError):
     pass
 
 
+class Mnb:
+    __slots__ = ("flg", "frm_num", "obj_num", "tracks")
+
+    def __init__(self, obj_num, frm_num, flg, tracks):
+        self.obj_num = obj_num
+        self.frm_num = frm_num
+        self.flg = flg
+        self.tracks = tracks
+
+
 def iter_motion_bins(data, base, end, endian="<"):
     o = base
+    i = 0
     while o + 4 <= end:
         size = struct.unpack_from(endian + "i", data, o)[0]
         if size == -1:
             return
         if size == 0:
             o += 4
+            i += 1
             continue
         if size < 16 or o + 4 + size > end:
             return
         blob = o + 4
         if data[blob : blob + 3] != b"MTN":
             return
-        yield (blob, size)
+        yield (i, blob, size)
         o += 4 + size
+        i += 1
 
 
 def parse_mnb(data, offset, size, endian="<"):
@@ -28,6 +41,7 @@ def parse_mnb(data, offset, size, endian="<"):
         raise MotionError("motion out of range")
     if data[offset : offset + 3] != b"MTN":
         raise MotionError("bad motion magic")
+    flg = data[offset + 3]
     dtop_rel = struct.unpack_from(endian + "H", data, offset + 4)[0]
     obj_num = struct.unpack_from(endian + "H", data, offset + 6)[0]
     mtn_off = struct.unpack_from(endian + "i", data, offset + 8)[0]
@@ -67,4 +81,4 @@ def parse_mnb(data, offset, size, endian="<"):
                 for f in range(frm_num)
             ]
         tracks.append((pos, ang))
-    return (obj_num, frm_num, tracks)
+    return Mnb(obj_num, frm_num, flg, tracks)

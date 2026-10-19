@@ -29,7 +29,7 @@ def _ensure_material(name, color):
 
 def import_boxes(name, entries, root, color):
     coll = create_collection(name, root)
-    mat = _ensure_material(f"{name}_MATERIAL", color)
+    mat = _ensure_material(f"{root.name}_{name}", color)
     box_faces = [
         (0, 1, 2, 3),
         (0, 4, 5, 1),
@@ -69,7 +69,7 @@ def import_boxes(name, entries, root, color):
                 (bx0, by1, bz1),
             ]
             faces = box_faces
-        mesh = bpy.data.meshes.new(f"{name}_{i:03d}_MESH")
+        mesh = bpy.data.meshes.new(f"{name}_{i:03d}")
         mesh.from_pydata(verts, [], faces)
         mesh.materials.append(mat)
         mesh.update()
@@ -79,4 +79,3 @@ def import_boxes(name, entries, root, color):
         obj.show_all_edges = True
         obj.color = (color[0], color[1], color[2], color[3])
         coll.objects.link(obj)
-    bpy.context.view_layer.update()

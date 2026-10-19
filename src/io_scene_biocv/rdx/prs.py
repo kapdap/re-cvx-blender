@@ -16,45 +16,58 @@ def decompress(data: bytes | bytearray) -> bytes:
     cmd = 0
     bits = 0
 
-    def get_byte() -> int:
-        nonlocal pos
-        if pos >= n:
-            raise PrsError(f"truncated PRS stream at offset {pos}")
-        val = src[pos]
-        pos += 1
-        return val
-
-    def get_bit() -> int:
-        nonlocal cmd, bits
-        if bits == 0:
-            cmd = get_byte()
-            bits = 8
-        bit = cmd & 1
-        cmd >>= 1
-        bits -= 1
-        return bit
-
     while pos < n:
-        if get_bit():
-            append(get_byte())
+        if bits == 0:
+            cmd = src[pos]
+            pos += 1
+            bits = 8
+        bits -= 1
+        if cmd & 1:
+            cmd >>= 1
+            if pos >= n:
+                raise PrsError(f"truncated PRS stream at offset {pos}")
+            append(src[pos])
+            pos += 1
             continue
-        if get_bit():
-            a = get_byte()
-            b = get_byte()
+        cmd >>= 1
+
+        if bits == 0:
+            cmd = src[pos]
+            pos += 1
+            bits = 8
+        bits -= 1
+        if cmd & 1:
+            cmd >>= 1
+            if pos + 1 >= n:
+                raise PrsError(f"truncated PRS stream at offset {pos}")
+            a = src[pos]
+            b = src[pos + 1]
+            pos += 2
             offset = ((b << 8) | a) >> 3
             amount = a & 7
             if pos < n:
                 if amount == 0:
-                    amount = get_byte() + 1
+                    amount = src[pos] + 1
+                    pos += 1
                 else:
                     amount += 2
             start = len(out) - 0x2000 + offset
         else:
+            cmd >>= 1
             amount = 0
-            amount = (amount << 1) | get_bit()
-            amount = (amount << 1) | get_bit()
+            for _ in range(2):
+                if bits == 0:
+                    cmd = src[pos]
+                    pos += 1
+                    bits = 8
+                bits -= 1
+                amount = (amount << 1) | (cmd & 1)
+                cmd >>= 1
             amount += 2
-            start = len(out) - 0x100 + get_byte()
+            if pos >= n:
+                raise PrsError(f"truncated PRS stream at offset {pos}")
+            start = len(out) - 0x100 + src[pos]
+            pos += 1
 
         if start >= 0 and start + amount <= len(out):
             extend(out[start : start + amount])

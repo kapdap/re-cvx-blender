@@ -1,7 +1,5 @@
 import bpy
 
-EMPTY_SIZE = 5.0
-
 
 def convert_pos(p):
     return (p[0], -p[2], p[1])
@@ -24,3 +22,12 @@ def create_collection(name, parent):
     coll = bpy.data.collections.new(name=name)
     parent.children.link(coll)
     return coll
+
+
+def create_empty(name, display, collection, location, size=5.0):
+    obj = bpy.data.objects.new(name, None)
+    obj.empty_display_type = display
+    obj.empty_display_size = size
+    obj.location = location
+    collection.objects.link(obj)
+    return obj

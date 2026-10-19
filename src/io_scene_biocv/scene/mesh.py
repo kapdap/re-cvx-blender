@@ -22,7 +22,7 @@ def _face_material_alpha(model, mat_idx):
     return entry["alpha"]
 
 
-def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False):
+def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat):
     a = _face_material_alpha(model, mat_idx) if blend else 1.0
     if not blend:
         return (texid, False, 1.0, nat)
@@ -33,8 +33,7 @@ def _face_slot_key(model, tex_repo, tex_table, texid, blend, mat_idx, nat=False)
     return (texid, False, 1.0, nat)
 
 
-def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
-    mesh_name = f"MDL_{mesh_key}_MESH"
+def build_mesh(mesh_name, model, tex_repo, tex_table, tex_names):
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is not None:
         return mesh
@@ -43,7 +42,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
     try:
         mesh.from_pydata(verts, [], model.faces)
     except (ValueError, RuntimeError) as exc:
-        print(f"RDX: from_pydata failed for {mesh_key}: {exc}")
+        print(f"RDX: from_pydata failed for {mesh_name}: {exc}")
         return None
     mesh.update()
 
@@ -80,7 +79,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
             try:
                 mesh.normals_split_custom_set(loop_normals)
             except (RuntimeError, ValueError, TypeError) as exc:
-                print(f"RDX: normals assign failed for {mesh_key}: {exc}")
+                print(f"RDX: normals assign failed for {mesh_name}: {exc}")
 
     if model.uvs and len(model.uvs) == len(model.faces):
         try:
@@ -89,7 +88,7 @@ def build_mesh(mesh_key, model, tex_repo, tex_table, tex_names):
                 for loop_idx, (u, v) in zip(poly.loop_indices, uvs):
                     uv_layer.data[loop_idx].uv = (u, 1.0 - v)
         except (RuntimeError, AttributeError) as exc:
-            print(f"RDX: UV assign failed for {mesh_key}: {exc}")
+            print(f"RDX: UV assign failed for {mesh_name}: {exc}")
 
     if tex_repo is not None and tex_table is not None and model.faces:
         blends = list(model.face_blend)

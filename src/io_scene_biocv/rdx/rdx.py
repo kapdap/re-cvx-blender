@@ -1,6 +1,6 @@
 import struct
 
-from . import mask, mlb, motion, prs, tex
+from . import mask, mlb, motion, prs, scd, tex
 
 RDX_MAGIC_0 = 0x40028F5C  # Demo
 RDX_MAGIC_1 = 0x40051EB8  # DC/PS2
@@ -434,6 +434,8 @@ class RdxFile:
         self.textures = []
         self.mask_pool = []
         self.lip_pool = []
+        self.room_motions = []
+        self.room_refs = {}
 
     def read(self, source):
         if isinstance(source, (bytes, bytearray)):
@@ -514,6 +516,7 @@ class RdxFile:
             table.blobs = list(mlb.iter_mlb_blobs(self.data, tp, end, e))
             if not (end - tp >= 3 and self.data[tp : tp + 3] == b"MDL"):
                 so = tp
+                mdl_n = 0
                 while so + 4 <= end:
                     size = struct.unpack_from(e + "i", self.data, so)[0]
                     if size == -1:
@@ -525,9 +528,11 @@ class RdxFile:
                         break
                     blob = so + 4
                     if blob + 4 <= end and self.data[blob : blob + 4] == b"SKIN":
-                        table.skins.append((blob, size))
+                        table.skins.append((mdl_n, blob, size))
                     elif blob + 4 <= end and self.data[blob : blob + 4] == b"MASK":
                         table.masks.append((blob, size))
+                    else:
+                        mdl_n += 1
                     so += 4 + size
             for bo, _bs in table.blobs:
                 has = False
@@ -538,7 +543,7 @@ class RdxFile:
 
     def _read_motions(self):
         base = self.header.sections[2]
-        if base == 0 or not self.actor:
+        if base == 0:
             return
         e = self.endian
         n = len(self.actor)
@@ -546,6 +551,7 @@ class RdxFile:
             return
         end = self.header.sections[3] or len(self.data)
         end = min(end, len(self.data))
+        self.room_motions = []
         by_id = {}
         for k in range(n):
             v = struct.unpack_from(e + "I", self.data, base + k * 4)[0]
@@ -557,6 +563,12 @@ class RdxFile:
         for ti, (kind, idx) in self.model_table_map().items():
             if kind == "actor" and idx is not None:
                 self.models[ti].motions = by_id.get(self.actor[idx].id, [])
+        try:
+            v = struct.unpack_from(e + "I", self.data, base + n * 4)[0]
+            if 0 < v < end:
+                self.room_motions = list(motion.iter_motion_bins(self.data, v, end, e))
+        except (ValueError, struct.error):
+            pass
         for attr, parse, k in (
             ("mask_pool", mask.parse_mask_pool, n + 1),
             ("lip_pool", mask.parse_lip_pool, n + 2),
@@ -567,6 +579,58 @@ class RdxFile:
                     setattr(self, attr, parse(self.data, v, end, e))
             except (ValueError, struct.error):
                 pass
+        if self.room_motions:
+            self._read_room_refs()
+
+    def _read_room_refs(self):
+        base = self.header.sections[3]
+        if base == 0 or base + 4 > len(self.data):
+            return
+        ptrs = []
+        o = base
+        while not ptrs or o < ptrs[0]:
+            if o + 4 > len(self.data):
+                break
+            ptrs.append(base + struct.unpack_from(self.endian + "i", self.data, o)[0])
+            o += 4
+        end = min(self.header.sections[4] or len(self.data), len(self.data))
+        valid = {tn for tn, _mo, _ms in self.room_motions}
+        known = set(self.model_table_map().values())
+        for i, ptr in enumerate(ptrs):
+            nxt = ptrs[i + 1] if i + 1 < len(ptrs) else end
+            if nxt < ptr or ptr < 0 or nxt > len(self.data):
+                break
+            try:
+                ops = scd.decode(bytes(self.data[ptr:nxt]))
+            except ValueError:
+                continue
+            cur = None
+            for _off, key, args in ops:
+                if key == "65":
+                    raw = b"".join(args)
+                    if len(raw) >= 2:
+                        c, r = raw[0], raw[1]
+                        if c == 1:
+                            cur = ("actor", r)
+                        elif c == 2:
+                            cur = ("obj", r)
+                        elif c == 3:
+                            cur = ("item", r)
+                        else:
+                            cur = None
+                elif key == "68":
+                    raw = b"".join(args)
+                    if len(raw) >= 2:
+                        c, r = raw[0], raw[1]
+                        if c == 1:
+                            cur = ("actor", r)
+                        elif c == 2:
+                            cur = ("obj", r)
+                elif key in ("6918", "6922"):
+                    if cur in known and len(args) >= 3 and len(args[2]) >= 1:
+                        s = args[2][0]
+                        if s in valid:
+                            self.room_refs.setdefault(cur, set()).add(s)
 
     def _read_textures(self):
         self.textures = []

@@ -15,7 +15,7 @@ def _local_matrix(obj, is_room):
         ax, ay, az = obj.ang
         if evalf & 0x2:
             ax = ay = az = 0
-        eul = ninja_euler(ax, ay, az, zxy=bool(evalf & 0x20))
+        eul = ninja_euler(ax, ay, az, bool(evalf & 0x20))
         if evalf & 0x4:
             scl = (1.0, 1.0, 1.0)
         else:
@@ -38,7 +38,9 @@ def _local_matrix(obj, is_room):
     return Matrix.Translation(Vector(loc)) @ eul.to_matrix().to_4x4()
 
 
-def build_armature(name, mlb_data, is_room, placement, collection):
+def build_armature(
+    name, mlb_data, is_room, placement, collection, stiff_bones, prefix="NODE"
+):
     arm = bpy.data.armatures.new(name)
     arm_obj = bpy.data.objects.new(name, arm)
     arm_obj.show_in_front = True
@@ -71,9 +73,15 @@ def build_armature(name, mlb_data, is_room, placement, collection):
     prev_active = bpy.context.view_layer.objects.active
     bpy.context.view_layer.objects.active = arm_obj
     bpy.ops.object.mode_set(mode="EDIT")
+    if prefix == "NODE":
+        stiff_prefix = "STIFF"
+    else:
+        stiff_prefix = f"{prefix}STIFF"
+    stiff_set = set(stiff_bones) if stiff_bones else set()
+    ang_of = {o.index: o.ang for o in mlb_data.objects}
     try:
         for obj in mlb_data.objects:
-            b = arm.edit_bones.new(f"NODE_{obj.index:03d}")
+            b = arm.edit_bones.new(f"{prefix}_{obj.index:03d}")
             b.head = heads[obj.index]
             rot = worlds[obj.index].to_3x3()
             d = rot @ Vector((0.0, 1.0, 0.0))
@@ -92,16 +100,37 @@ def build_armature(name, mlb_data, is_room, placement, collection):
                 b.hide = True
         for obj in mlb_data.objects:
             if obj.index in parent:
-                child_bone = arm.edit_bones.get(f"NODE_{obj.index:03d}")
-                parent_bone = arm.edit_bones.get(f"NODE_{parent[obj.index]:03d}")
+                child_bone = arm.edit_bones.get(f"{prefix}_{obj.index:03d}")
+                parent_bone = arm.edit_bones.get(f"{prefix}_{parent[obj.index]:03d}")
                 if child_bone is not None and parent_bone is not None:
                     child_bone.parent = parent_bone
                     if (child_bone.head - parent_bone.tail).length < 1e-4:
                         child_bone.use_connect = True
+        for idx in stiff_set:
+            pname = f"{prefix}_{idx:03d}"
+            sname = f"{stiff_prefix}_{idx:03d}"
+            pbone = arm.edit_bones.get(pname)
+            if pbone is None or sname in arm.edit_bones:
+                continue
+            if idx not in heads:
+                continue
+            sb = arm.edit_bones.new(sname)
+            sb.head = pbone.head
+            sb.tail = pbone.tail
+            sb.parent = pbone
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
         bpy.context.view_layer.objects.active = prev_active
+    for idx in stiff_set:
+        sname = f"{stiff_prefix}_{idx:03d}"
+        pb = arm_obj.pose.bones.get(sname)
+        if pb is None:
+            continue
+        pb.rotation_mode = "XYZ"
+        pb.location = (0.0, 0.0, 0.0)
+        ang = ang_of.get(idx, (0, 0, 0))
+        pb.rotation_euler = ninja_euler(-ang[0], -ang[1], -ang[2])
     if placement is not None:
         arm_obj.matrix_world = placement
-    bone_names = {o.index: f"NODE_{o.index:03d}" for o in mlb_data.objects}
+    bone_names = {o.index: f"{prefix}_{o.index:03d}" for o in mlb_data.objects}
     return arm_obj, bone_names, worlds, parent
