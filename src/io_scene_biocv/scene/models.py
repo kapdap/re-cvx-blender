@@ -1,7 +1,9 @@
+import struct
+
 import bpy
 from mathutils import Matrix, Vector
 
-from ..rdx import mask, mlb, nj, skin
+from ..rdx import mask, mlb, nj, scd, skin
 from .armature import build_armature
 from .common import convert_pos, convert_scale, create_collection
 from .mesh import build_mesh
@@ -421,6 +423,94 @@ def _import_static(
         )
 
 
+def _room_links(rdx):
+    base = rdx.header.sections[3]
+    end = rdx.header.sections[4] or len(rdx.data)
+    if not base or base >= len(rdx.data):
+        return {}
+    offs = []
+    o = base
+    while True:
+        if o + 4 > len(rdx.data):
+            break
+        v = struct.unpack_from(rdx.endian + "i", rdx.data, o)[0]
+        if v < 0 or base + v >= end or (offs and base + v <= base + offs[-1]):
+            break
+        offs.append(v)
+        o += 4
+        if len(offs) > 512:
+            break
+    out = {}
+    for i, off in enumerate(offs):
+        s = base + off
+        e = base + offs[i + 1] if i + 1 < len(offs) else end
+        try:
+            ops = scd.decode(bytes(rdx.data[s:e]))
+        except ValueError:
+            continue
+        for _, key, args in ops:
+            if key != "32" or args[3][0] != 0:
+                continue
+            sign = args[4][0]
+            lox = struct.unpack_from(rdx.endian + "H", args[5])[0] / 100.0
+            loy = struct.unpack_from(rdx.endian + "H", args[6])[0] / 100.0
+            loz = struct.unpack_from(rdx.endian + "H", args[7])[0] / 100.0
+            if sign & 1:
+                lox = -lox
+            if sign & 2:
+                loy = -loy
+            if sign & 4:
+                loz = -loz
+            out[args[1][0]] = (args[0][0], args[2][0], lox, loy, loz)
+    return out
+
+
+def _apply_object_links(rdx, node_prefix, tbl_map, arms):
+    links = _room_links(rdx)
+    if not links:
+        return
+    act_ti = {}
+    obj_ti = {}
+    for ti, entry in tbl_map.items():
+        if entry[1] is None:
+            continue
+        if entry[0] == "actor":
+            act_ti[entry[1]] = ti
+        elif entry[0] == "obj":
+            obj_ti[entry[1]] = ti
+    for obj_no, (ene, lkono, lox, loy, loz) in links.items():
+        if obj_no not in obj_ti or ene not in act_ti:
+            continue
+        ti = obj_ti[obj_no]
+        ati = act_ti[ene]
+        arm = arms.get(ati)
+        if arm is None:
+            continue
+        arm_obj, bone_names = arm[0], arm[1]
+        has_mask = bool(rdx.models[ati].masks)
+        rig = lkono - 4 if has_mask and lkono > 14 else lkono
+        bn = bone_names.get(rig)
+        bone = arm_obj.data.bones.get(bn) if bn else None
+        if bone is None:
+            continue
+        entry = rdx.obj[obj_no]
+        prefix = f"{node_prefix}_{ti:03d}_"
+        off = convert_pos((lox, loy, loz))
+        for o in bpy.data.objects:
+            if (
+                o.type != "EMPTY"
+                or o.parent is not None
+                or not o.name.startswith(prefix)
+            ):
+                continue
+            o.parent = arm_obj
+            o.parent_type = "BONE"
+            o.parent_bone = bn
+            o.matrix_parent_inverse = Matrix.Identity(4)
+            o.location = (off[0], off[1] - bone.length, off[2])
+            set_rotation(o, entry.ang[0], entry.ang[1], entry.ang[2])
+
+
 def import_models(stem, rdx, root, tex_repo, kinds, apply_motions, rom_mtn):
     allowed = {"room", "actor", "obj", "item"} if kinds is None else set(kinds)
     coll = create_collection("MDL", root)
@@ -618,4 +708,5 @@ def import_models(stem, rdx, root, tex_repo, kinds, apply_motions, rom_mtn):
                 for mobj in created.values():
                     mobj.hide_viewport = True
                     mobj.hide_render = True
+    _apply_object_links(rdx, node_prefix, tbl_map, arms)
     return arms
