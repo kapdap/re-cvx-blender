@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.0](v0.4.0) (2026-10-19)
+
+### Features
+
+* **models:** link room objects to actor bones
+* **motions:** import room/cinematic motions
+
 ## [0.3.0](v0.3.0) (2026-10-17)
 
 ### Features
